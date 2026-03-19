@@ -802,9 +802,44 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
 };
 
 // ============================================
+// ELECTION VARIANT (ElectroPulse - India 2026)
+// ============================================
+const ELECTION_PANELS: Record<string, PanelConfig> = {
+  map: { name: 'India Map', enabled: true, priority: 1 },
+  // Future panels:
+  // 'seat-tally': { name: 'Seat Tally', enabled: true, priority: 1 },
+  // 'swing-analysis': { name: 'Swing vs 2021', enabled: true, priority: 1 },
+  // 'alliance-tracker': { name: 'Alliance Tracker', enabled: true, priority: 1 },
+  // 'live-results': { name: 'Live Results Feed', enabled: true, priority: 1 },
+  // 'turnout': { name: 'Voter Turnout', enabled: true, priority: 2 },
+};
+
+const ALL_LAYERS_OFF: MapLayers = {
+  conflicts: false, bases: false, cables: false, pipelines: false,
+  hotspots: false, ais: false, nuclear: false, irradiators: false,
+  sanctions: false, weather: false, economic: false, waterways: false,
+  outages: false, cyberThreats: false, datacenters: false, protests: false,
+  flights: false, military: false, natural: false, spaceports: false,
+  minerals: false, fires: false, ucdpEvents: false, displacement: false,
+  climate: false, startupHubs: false, cloudRegions: false, accelerators: false,
+  techHQs: false, techEvents: false, stockExchanges: false,
+  financialCenters: false, centralBanks: false, commodityHubs: false,
+  gulfInvestments: false, positiveEvents: false, kindness: false,
+  happiness: false, speciesRecovery: false, renewableInstallations: false,
+  tradeRoutes: false, iranAttacks: false, gpsJamming: false, satellites: false,
+  ciiChoropleth: false, dayNight: false, miningSites: false,
+  processingPlants: false, commodityPorts: false, webcams: false,
+};
+
+const ELECTION_MAP_LAYERS: MapLayers = { ...ALL_LAYERS_OFF };
+const ELECTION_MOBILE_MAP_LAYERS: MapLayers = { ...ALL_LAYERS_OFF };
+
+// ============================================
 // VARIANT-AWARE EXPORTS
 // ============================================
-export const DEFAULT_PANELS = SITE_VARIANT === 'happy' 
+export const DEFAULT_PANELS = SITE_VARIANT === 'election'
+  ? ELECTION_PANELS
+  : SITE_VARIANT === 'happy' 
   ? HAPPY_PANELS 
   : SITE_VARIANT === 'tech' 
     ? TECH_PANELS 
@@ -814,7 +849,9 @@ export const DEFAULT_PANELS = SITE_VARIANT === 'happy'
         ? COMMODITY_PANELS
         : FULL_PANELS;
 
-export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy' 
+export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'election'
+  ? ELECTION_MAP_LAYERS
+  : SITE_VARIANT === 'happy' 
   ? HAPPY_MAP_LAYERS 
   : SITE_VARIANT === 'tech' 
     ? TECH_MAP_LAYERS 
@@ -824,7 +861,9 @@ export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
         ? COMMODITY_MAP_LAYERS
         : FULL_MAP_LAYERS;
 
-export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy' 
+export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'election'
+  ? ELECTION_MOBILE_MAP_LAYERS
+  : SITE_VARIANT === 'happy' 
   ? HAPPY_MOBILE_MAP_LAYERS 
   : SITE_VARIANT === 'tech' 
     ? TECH_MOBILE_MAP_LAYERS 
@@ -833,6 +872,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
       : SITE_VARIANT === 'commodity'
         ? COMMODITY_MOBILE_MAP_LAYERS
         : FULL_MOBILE_MAP_LAYERS;
+
 
 /** Maps map-layer toggle keys to their data-freshness source IDs (single source of truth). */
 export const LAYER_TO_SOURCE: Partial<Record<keyof MapLayers, DataSourceId[]>> = {
@@ -980,6 +1020,13 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
     labelKey: 'header.panelCatHappyPlanet',
     panelKeys: ['species', 'renewable', 'giving'],
     variants: ['happy'],
+  },
+
+  // Election variant (ElectroPulse)
+  electionCore: {
+    labelKey: 'header.panelCatElectionCore',
+    panelKeys: ['map'],
+    variants: ['election'],
   },
 };
 
