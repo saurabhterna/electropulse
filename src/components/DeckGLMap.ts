@@ -3938,7 +3938,7 @@ export class DeckGLMap {
 
     const authorBadge = document.createElement('div');
     authorBadge.className = 'map-author-badge';
-    authorBadge.textContent = '© Elie Habib · Someone™';
+    authorBadge.textContent = SITE_VARIANT === 'election' ? '⚡ ElectroPulse 2026' : '© Elie Habib · Someone™';
     toggles.appendChild(authorBadge);
 
     this.container.appendChild(toggles);
@@ -4163,7 +4163,9 @@ export class DeckGLMap {
     };
 
     const isLight = getCurrentTheme() === 'light';
-    const legendItems = SITE_VARIANT === 'tech'
+    const legendItems = SITE_VARIANT === 'election'
+      ? []
+      : SITE_VARIANT === 'tech'
       ? [
         { shape: shapes.circle(isLight ? 'rgb(22, 163, 74)' : 'rgb(0, 255, 150)'), label: t('components.deckgl.legend.startupHub') },
         { shape: shapes.circle('rgb(100, 200, 255)'), label: t('components.deckgl.legend.techHQ') },

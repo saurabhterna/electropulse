@@ -1704,7 +1704,7 @@ export class GlobeMap {
       </div>`;
     const authorBadge = document.createElement('div');
     authorBadge.className = 'map-author-badge';
-    authorBadge.textContent = '© Elie Habib · Someone™';
+    authorBadge.textContent = SITE_VARIANT === 'election' ? '⚡ ElectroPulse 2026' : '© Elie Habib · Someone™';
     el.appendChild(authorBadge);
     this.container.appendChild(el);
 

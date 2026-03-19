@@ -190,6 +190,9 @@ export class PanelLayoutManager implements AppModule {
           </div>
           <div class="region-selector">
             <select id="regionSelect" class="region-select">
+              ${SITE_VARIANT === 'election' ? `
+              <option value="asia">India</option>
+              ` : `
               <option value="global">${t('components.deckgl.views.global')}</option>
               <option value="america">${t('components.deckgl.views.americas')}</option>
               <option value="mena">${t('components.deckgl.views.mena')}</option>
@@ -198,6 +201,7 @@ export class PanelLayoutManager implements AppModule {
               <option value="latam">${t('components.deckgl.views.latam')}</option>
               <option value="africa">${t('components.deckgl.views.africa')}</option>
               <option value="oceania">${t('components.deckgl.views.oceania')}</option>
+              `}
             </select>
           </div>
           <button class="mobile-search-btn" id="mobileSearchBtn" aria-label="${t('header.search')}">
@@ -205,7 +209,7 @@ export class PanelLayoutManager implements AppModule {
           </button>
         </div>
         <div class="header-right">
-          ${this.ctx.isDesktopApp ? '' : `<div class="download-wrapper" id="downloadWrapper">
+          ${this.ctx.isDesktopApp || SITE_VARIANT === 'election' ? '' : `<div class="download-wrapper" id="downloadWrapper">
             <button class="download-btn" id="downloadBtn" title="${t('header.downloadApp')}">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               <span id="downloadBtnLabel">${t('header.downloadApp')}</span>
@@ -296,7 +300,7 @@ export class PanelLayoutManager implements AppModule {
         <div class="map-section" id="mapSection">
           <div class="panel-header">
             <div class="panel-header-left">
-              <span class="panel-title">${SITE_VARIANT === 'tech' ? t('panels.techMap') : SITE_VARIANT === 'happy' ? 'Good News Map' : t('panels.map')}</span>
+              <span class="panel-title">${SITE_VARIANT === 'election' ? 'Election Dashboard 2026' : SITE_VARIANT === 'tech' ? t('panels.techMap') : SITE_VARIANT === 'happy' ? 'Good News Map' : t('panels.map')}</span>
             </div>
             <span class="header-clock" id="headerClock" translate="no"></span>
             <div class="map-header-actions">
@@ -331,6 +335,11 @@ export class PanelLayoutManager implements AppModule {
           </div>
         </div>
         <nav>
+          ${SITE_VARIANT === 'election' ? `
+          <a href="https://results.eci.gov.in" target="_blank" rel="noopener">ECI Results</a>
+          <a href="https://github.com/saurabhterna/electropulse" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener">Built on WorldMonitor</a>
+          ` : `
           <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/pro' : 'https://www.worldmonitor.app/pro'}" target="_blank" rel="noopener">Pro</a>
           <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/blog/' : 'https://www.worldmonitor.app/blog/'}" target="_blank" rel="noopener">Blog</a>
           <a href="${this.ctx.isDesktopApp ? 'https://worldmonitor.app/docs' : 'https://www.worldmonitor.app/docs'}" target="_blank" rel="noopener">Docs</a>
@@ -338,6 +347,7 @@ export class PanelLayoutManager implements AppModule {
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noopener">GitHub</a>
           <a href="https://github.com/koala73/worldmonitor/discussions" target="_blank" rel="noopener">Discussions</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noopener">X</a>
+          `}
         </nav>
         <span class="site-footer-copy">&copy; ${new Date().getFullYear()} ${SITE_VARIANT === 'election' ? 'ElectroPulse' : 'World Monitor'}</span>
       </footer>
@@ -490,9 +500,9 @@ export class PanelLayoutManager implements AppModule {
     const mapContainer = document.getElementById('mapContainer') as HTMLElement;
     const preferGlobe = loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe';
     this.ctx.map = new MapContainer(mapContainer, {
-      zoom: this.ctx.isMobile ? 2.5 : 1.0,
+      zoom: SITE_VARIANT === 'election' ? (this.ctx.isMobile ? 3.5 : 4.0) : (this.ctx.isMobile ? 2.5 : 1.0),
       pan: { x: 0, y: 0 },
-      view: this.ctx.isMobile ? this.ctx.resolvedLocation : 'global',
+      view: SITE_VARIANT === 'election' ? 'asia' : (this.ctx.isMobile ? this.ctx.resolvedLocation : 'global'),
       layers: this.ctx.mapLayers,
       timeRange: '7d',
     }, preferGlobe);
