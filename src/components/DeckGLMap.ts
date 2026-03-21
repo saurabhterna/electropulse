@@ -3453,71 +3453,137 @@ export class DeckGLMap {
     const runnerUpColor = runnerUpParty ? getPartyColor(runnerUpParty) : '#888';
 
     const titleCased = acName.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    const stateTitleCased = stateName.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
 
-    const panel = document.createElement('div');
-    panel.id = 'election-constituency-panel';
-    panel.style.cssText = `
-      position: absolute; top: 12px; right: 12px; z-index: 100;
-      background: rgba(10, 15, 10, 0.94); backdrop-filter: blur(8px);
-      border: 1px solid rgba(255,255,255,0.12); border-radius: 10px;
-      padding: 16px; width: 260px; color: #e0e0e0; font-family: inherit;
+    // Create full-height right drawer
+    const drawer = document.createElement('div');
+    drawer.id = 'election-constituency-drawer';
+    drawer.style.cssText = `
+      position: fixed; top: 0; right: 0; z-index: 9999;
+      width: 340px; height: 100vh;
+      background: rgba(10, 15, 10, 0.96); backdrop-filter: blur(12px);
+      border-left: 1px solid rgba(255,255,255,0.1);
+      color: #e0e0e0; font-family: inherit;
+      overflow-y: auto; overflow-x: hidden;
+      transform: translateX(100%); transition: transform 0.3s ease;
+      scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent;
     `;
 
-    panel.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;">Constituency Detail</div>
-        <button id="epCloseAC" style="background:none;border:none;color:rgba(255,255,255,0.5);cursor:pointer;font-size:18px;padding:0 4px;">×</button>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-        <div style="background:${meta.color};color:#fff;font-size:12px;font-weight:700;padding:4px 8px;border-radius:4px;min-width:28px;text-align:center;">${acNo}</div>
-        <div>
-          <div style="font-size:15px;font-weight:600;">${this.escapeStr(titleCased)}</div>
-          <div style="font-size:11px;opacity:0.5;">${this.escapeStr(distName)} · ${this.escapeStr(stateName.split(' ').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' '))}</div>
+    drawer.innerHTML = `
+      <div style="padding:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.4;font-weight:500;">Constituency</div>
+          <button id="epCloseDrawer" style="background:none;border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.6);cursor:pointer;font-size:13px;padding:4px 10px;border-radius:6px;">✕ Close</button>
         </div>
-      </div>
-      ${winner ? `
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin:14px 0 8px;">2021 Winner</div>
-        <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.06);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
-          <div style="width:4px;height:36px;border-radius:2px;background:${winnerColor};flex-shrink:0;"></div>
+
+        <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:20px;">
+          <div style="background:${meta.color};color:#fff;font-size:14px;font-weight:700;padding:6px 10px;border-radius:6px;min-width:32px;text-align:center;line-height:1.2;">${acNo}</div>
           <div>
-            <div style="font-size:14px;font-weight:600;">${this.escapeStr(winner)}</div>
-            <div style="font-size:12px;color:${winnerColor};font-weight:500;">${this.escapeStr(winnerParty)}</div>
+            <div style="font-size:20px;font-weight:600;line-height:1.2;">${this.escapeStr(titleCased)}</div>
+            <div style="font-size:12px;opacity:0.5;margin-top:4px;">${this.escapeStr(distName)} district</div>
+            <div style="font-size:12px;opacity:0.4;margin-top:2px;">${this.escapeStr(stateTitleCased)}</div>
           </div>
         </div>
-        ${runnerUp ? `
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin:10px 0 6px;">Runner-up</div>
-          <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.04);border-radius:8px;padding:8px 12px;margin-bottom:8px;">
-            <div style="width:4px;height:30px;border-radius:2px;background:${runnerUpColor};flex-shrink:0;"></div>
-            <div>
-              <div style="font-size:13px;">${this.escapeStr(runnerUp)}</div>
-              <div style="font-size:11px;color:${runnerUpColor};">${this.escapeStr(runnerUpParty)}</div>
+
+        <div style="height:1px;background:rgba(255,255,255,0.08);margin:16px 0;"></div>
+
+        ${winner ? `
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.4;margin-bottom:12px;font-weight:500;">2021 Result</div>
+
+          <div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:14px;margin-bottom:12px;border-left:4px solid ${winnerColor};">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin-bottom:6px;">Winner</div>
+            <div style="font-size:16px;font-weight:600;">${this.escapeStr(winner)}</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+              <div style="width:10px;height:10px;border-radius:2px;background:${winnerColor};"></div>
+              <span style="font-size:13px;color:${winnerColor};font-weight:500;">${this.escapeStr(winnerParty)}</span>
             </div>
           </div>
-        ` : ''}
-        ${margin ? `
-          <div style="font-size:12px;opacity:0.5;text-align:center;margin:8px 0;">Winning margin: <strong style="color:#fff;">${margin.toLocaleString()}</strong> votes</div>
-        ` : ''}
-      ` : `
-        <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:16px;text-align:center;margin-top:12px;">
-          <div style="font-size:12px;opacity:0.4;">2021 winner data not yet loaded</div>
+
+          ${runnerUp ? `
+            <div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:14px;margin-bottom:12px;border-left:4px solid ${runnerUpColor};">
+              <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin-bottom:6px;">Runner-up</div>
+              <div style="font-size:14px;font-weight:500;">${this.escapeStr(runnerUp)}</div>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+                <div style="width:10px;height:10px;border-radius:2px;background:${runnerUpColor};"></div>
+                <span style="font-size:12px;color:${runnerUpColor};">${this.escapeStr(runnerUpParty)}</span>
+              </div>
+            </div>
+          ` : ''}
+
+          ${margin ? `
+            <div style="display:flex;justify-content:center;gap:24px;background:rgba(255,255,255,0.04);border-radius:8px;padding:12px;margin-bottom:16px;">
+              <div style="text-align:center;">
+                <div style="font-size:18px;font-weight:700;color:#fff;">${margin.toLocaleString()}</div>
+                <div style="font-size:10px;opacity:0.4;text-transform:uppercase;letter-spacing:0.5px;">Margin</div>
+              </div>
+            </div>
+          ` : ''}
+        ` : `
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.4;margin-bottom:12px;font-weight:500;">2021 Result</div>
+          <div style="background:rgba(255,255,255,0.04);border-radius:10px;padding:20px;text-align:center;">
+            <div style="font-size:13px;opacity:0.4;">Constituency data not yet loaded</div>
+            <div style="font-size:11px;opacity:0.25;margin-top:4px;">Full data coming soon</div>
+          </div>
+        `}
+
+        <div style="height:1px;background:rgba(255,255,255,0.08);margin:16px 0;"></div>
+
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.4;margin-bottom:12px;font-weight:500;">2026 Election</div>
+        <div style="background:linear-gradient(135deg, rgba(${parseInt(meta.color.slice(1,3),16)},${parseInt(meta.color.slice(3,5),16)},${parseInt(meta.color.slice(5,7),16)},0.15), rgba(255,255,255,0.03));border-radius:10px;padding:16px;text-align:center;border:1px solid rgba(${parseInt(meta.color.slice(1,3),16)},${parseInt(meta.color.slice(3,5),16)},${parseInt(meta.color.slice(5,7),16)},0.2);">
+          <div style="font-size:14px;font-weight:600;color:${meta.color};">Upcoming</div>
+          <div style="font-size:12px;opacity:0.5;margin-top:6px;">Candidates to be announced</div>
+          <div style="font-size:11px;opacity:0.35;margin-top:4px;">${meta.phase} · ${meta.date}</div>
+          <div style="font-size:11px;opacity:0.25;margin-top:4px;">Results: May 4, 2026</div>
         </div>
-      `}
-      <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:12px;text-align:center;margin-top:12px;">
-        <div style="font-size:11px;font-weight:600;color:${meta.color};">2026 Election</div>
-        <div style="font-size:11px;opacity:0.4;margin-top:4px;">Candidates to be announced</div>
-        <div style="font-size:10px;opacity:0.3;margin-top:2px;">${meta.phase} · ${meta.date}</div>
+
+        <div style="height:1px;background:rgba(255,255,255,0.08);margin:16px 0;"></div>
+
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.4;margin-bottom:10px;font-weight:500;">Quick Facts</div>
+        <div style="font-size:12px;opacity:0.5;line-height:1.8;">
+          <div>State: ${this.escapeStr(stateTitleCased)}</div>
+          <div>District: ${this.escapeStr(distName)}</div>
+          <div>AC Number: ${acNo}</div>
+          <div>Total seats in state: ${meta.seats}</div>
+          <div>Majority mark: ${Math.ceil(meta.seats / 2) + 1}</div>
+        </div>
+
+        <div style="margin-top:24px;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;text-align:center;">
+          <div style="font-size:10px;opacity:0.25;">ElectroPulse · electropulse.vercel.app</div>
+        </div>
       </div>
     `;
 
-    const wrapper = this.container.querySelector('.deckgl-map-wrapper') || this.container;
-    wrapper.appendChild(panel);
+    document.body.appendChild(drawer);
 
-    panel.querySelector('#epCloseAC')?.addEventListener('click', () => this.hideConstituencyDetail());
+    // Animate in
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        drawer.style.transform = 'translateX(0)';
+      });
+    });
+
+    drawer.querySelector('#epCloseDrawer')?.addEventListener('click', () => this.hideConstituencyDetail());
+
+    // Click outside drawer to close
+    const backdrop = document.createElement('div');
+    backdrop.id = 'election-constituency-backdrop';
+    backdrop.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.3);opacity:0;transition:opacity 0.3s ease;';
+    document.body.appendChild(backdrop);
+    requestAnimationFrame(() => { backdrop.style.opacity = '1'; });
+    backdrop.addEventListener('click', () => this.hideConstituencyDetail());
   }
 
   private hideConstituencyDetail(): void {
-    const existing = this.container.querySelector('#election-constituency-panel');
-    if (existing) existing.remove();
+    const drawer = document.getElementById('election-constituency-drawer');
+    const backdrop = document.getElementById('election-constituency-backdrop');
+    if (drawer) {
+      drawer.style.transform = 'translateX(100%)';
+      setTimeout(() => drawer.remove(), 300);
+    }
+    if (backdrop) {
+      backdrop.style.opacity = '0';
+      setTimeout(() => backdrop.remove(), 300);
+    }
   }
 
   private escapeStr(s: string): string {
