@@ -354,6 +354,8 @@ export class DeckGLMap {
   private selectedElectionState: string | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private results2021: Record<string, any> | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private constituencyResults2021: Record<string, any> | null = null;
 
   private static readonly ELECTION_STATE_META: Record<string, {
     code: string; seats: number; color: string; phase: string; date: string;
@@ -518,6 +520,12 @@ export class DeckGLMap {
           .then(r => r.json())
           .then(data => { this.results2021 = data?.states ?? null; })
           .catch(err => console.warn('[ElectroPulse] Failed to load 2021 results:', err));
+
+        // Load constituency-level 2021 results
+        fetch('/data/constituency-results-2021.json')
+          .then(r => r.json())
+          .then(data => { this.constituencyResults2021 = data?.states ?? null; })
+          .catch(err => console.warn('[ElectroPulse] Failed to load constituency results:', err));
       }
 
       this.render();
@@ -3397,7 +3405,7 @@ export class DeckGLMap {
         </div>
       </div>
       ${sortedParties.length > 0 ? `
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin-bottom:8px;">2021 Results ${winnerCM ? '· ' + this.escapeStr(winnerCM) : ''}</div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin-bottom:8px;">2021 Baseline ${winnerCM ? '· ' + this.escapeStr(winnerCM) : ''}</div>
         <div style="position:relative;margin-bottom:4px;">
           ${tallyBarsHtml}
           <div style="position:absolute;top:0;bottom:0;left:${majorityPct}%;width:1px;background:rgba(255,255,255,0.4);pointer-events:none;"></div>
@@ -3425,6 +3433,90 @@ export class DeckGLMap {
 
   private hideElectionStatePanel(): void {
     const existing = this.container.querySelector('#election-state-panel');
+    if (existing) existing.remove();
+    this.hideConstituencyDetail();
+  }
+
+  private showConstituencyDetail(stateName: string, acNo: number, acName: string, distName: string): void {
+    this.hideConstituencyDetail();
+    const meta = DeckGLMap.ELECTION_STATE_META[stateName];
+    if (!meta) return;
+
+    // Look up 2021 constituency result
+    const cResult = this.constituencyResults2021?.[stateName]?.[String(acNo)];
+    const winner = cResult?.winner ?? null;
+    const winnerParty = cResult?.party ?? null;
+    const runnerUp = cResult?.runner_up ?? null;
+    const runnerUpParty = cResult?.runner_up_party ?? null;
+    const margin = cResult?.margin ?? null;
+    const winnerColor = winnerParty ? getPartyColor(winnerParty) : '#888';
+    const runnerUpColor = runnerUpParty ? getPartyColor(runnerUpParty) : '#888';
+
+    const titleCased = acName.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+
+    const panel = document.createElement('div');
+    panel.id = 'election-constituency-panel';
+    panel.style.cssText = `
+      position: absolute; top: 12px; right: 12px; z-index: 100;
+      background: rgba(10, 15, 10, 0.94); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 10px;
+      padding: 16px; width: 260px; color: #e0e0e0; font-family: inherit;
+    `;
+
+    panel.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;">Constituency Detail</div>
+        <button id="epCloseAC" style="background:none;border:none;color:rgba(255,255,255,0.5);cursor:pointer;font-size:18px;padding:0 4px;">×</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <div style="background:${meta.color};color:#fff;font-size:12px;font-weight:700;padding:4px 8px;border-radius:4px;min-width:28px;text-align:center;">${acNo}</div>
+        <div>
+          <div style="font-size:15px;font-weight:600;">${this.escapeStr(titleCased)}</div>
+          <div style="font-size:11px;opacity:0.5;">${this.escapeStr(distName)} · ${this.escapeStr(stateName.split(' ').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' '))}</div>
+        </div>
+      </div>
+      ${winner ? `
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin:14px 0 8px;">2021 Winner</div>
+        <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.06);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+          <div style="width:4px;height:36px;border-radius:2px;background:${winnerColor};flex-shrink:0;"></div>
+          <div>
+            <div style="font-size:14px;font-weight:600;">${this.escapeStr(winner)}</div>
+            <div style="font-size:12px;color:${winnerColor};font-weight:500;">${this.escapeStr(winnerParty)}</div>
+          </div>
+        </div>
+        ${runnerUp ? `
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin:10px 0 6px;">Runner-up</div>
+          <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.04);border-radius:8px;padding:8px 12px;margin-bottom:8px;">
+            <div style="width:4px;height:30px;border-radius:2px;background:${runnerUpColor};flex-shrink:0;"></div>
+            <div>
+              <div style="font-size:13px;">${this.escapeStr(runnerUp)}</div>
+              <div style="font-size:11px;color:${runnerUpColor};">${this.escapeStr(runnerUpParty)}</div>
+            </div>
+          </div>
+        ` : ''}
+        ${margin ? `
+          <div style="font-size:12px;opacity:0.5;text-align:center;margin:8px 0;">Winning margin: <strong style="color:#fff;">${margin.toLocaleString()}</strong> votes</div>
+        ` : ''}
+      ` : `
+        <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:16px;text-align:center;margin-top:12px;">
+          <div style="font-size:12px;opacity:0.4;">2021 winner data not yet loaded</div>
+        </div>
+      `}
+      <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:12px;text-align:center;margin-top:12px;">
+        <div style="font-size:11px;font-weight:600;color:${meta.color};">2026 Election</div>
+        <div style="font-size:11px;opacity:0.4;margin-top:4px;">Candidates to be announced</div>
+        <div style="font-size:10px;opacity:0.3;margin-top:2px;">${meta.phase} · ${meta.date}</div>
+      </div>
+    `;
+
+    const wrapper = this.container.querySelector('.deckgl-map-wrapper') || this.container;
+    wrapper.appendChild(panel);
+
+    panel.querySelector('#epCloseAC')?.addEventListener('click', () => this.hideConstituencyDetail());
+  }
+
+  private hideConstituencyDetail(): void {
+    const existing = this.container.querySelector('#election-constituency-panel');
     if (existing) existing.remove();
   }
 
@@ -3753,6 +3845,8 @@ export class DeckGLMap {
   private handleClick(info: PickingInfo): void {
     const isChoropleth = info.layer?.id ? DeckGLMap.CHOROPLETH_LAYER_IDS.has(info.layer.id) : false;
     if (!info.object || isChoropleth) {
+      // ElectroPulse: Skip country drawer for election variant
+      if (SITE_VARIANT === 'election') return;
       if (info.coordinate && this.onCountryClick) {
         const [lon, lat] = info.coordinate as [number, number];
         const country = isChoropleth && info.object?.properties
@@ -3770,12 +3864,21 @@ export class DeckGLMap {
     const rawClickLayerId = info.layer?.id || '';
     const layerId = rawClickLayerId.endsWith('-ghost') ? rawClickLayerId.slice(0, -6) : rawClickLayerId;
 
-    // ElectroPulse: Click on constituency → zoom to state + show panel
+    // ElectroPulse: Click on constituency → zoom to state or show constituency detail
     if (layerId === 'election-constituencies-layer' && SITE_VARIANT === 'election') {
       const props = (info.object as { properties?: Record<string, unknown> })?.properties;
       const stateName = props?.ST_NAME as string | undefined;
       if (stateName) {
-        this.selectElectionState(stateName);
+        if (this.selectedElectionState === stateName) {
+          // Already in this state — show constituency detail
+          const acNo = props?.AC_NO as number;
+          const acName = props?.AC_NAME as string;
+          const distName = props?.DIST_NAME as string;
+          this.showConstituencyDetail(stateName, acNo, acName, distName);
+        } else {
+          // Zoom to state
+          this.selectElectionState(stateName);
+        }
       }
       return;
     }
