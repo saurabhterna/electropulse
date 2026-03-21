@@ -3308,7 +3308,7 @@ export class DeckGLMap {
       position: absolute; top: 12px; left: 12px; z-index: 100;
       background: rgba(10, 15, 10, 0.92); backdrop-filter: blur(8px);
       border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
-      padding: 16px; width: 280px; max-height: calc(100% - 24px);
+      padding: 16px; width: 280px; max-height: calc(100% - 30px);
       overflow-y: auto; color: #e0e0e0; font-family: inherit;
       scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent;
     `;
@@ -3339,7 +3339,7 @@ export class DeckGLMap {
         </div>
       </div>
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin-bottom:8px;">Constituencies (${acCount})</div>
-      <div style="max-height:280px;overflow-y:auto;border:1px solid rgba(255,255,255,0.06);border-radius:6px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;">
+      <div style="max-height:400px;overflow-y:auto;border:1px solid rgba(255,255,255,0.06);border-radius:6px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;">
         ${acListHtml}
       </div>
       <div style="margin-top:12px;font-size:10px;opacity:0.3;text-align:center;">Results: May 4, 2026</div>
@@ -4070,6 +4070,8 @@ export class DeckGLMap {
   private createTimeSlider(): void {
     const slider = document.createElement('div');
     slider.className = 'time-slider deckgl-time-slider';
+    // ElectroPulse: Hide time slider for election variant
+    if (SITE_VARIANT === 'election') { slider.style.display = 'none'; }
     slider.innerHTML = `
       <div class="time-options">
         <button class="time-btn ${this.state.timeRange === '1h' ? 'active' : ''}" data-range="1h">1h</button>
@@ -4103,6 +4105,8 @@ export class DeckGLMap {
   private createLayerToggles(): void {
     const toggles = document.createElement('div');
     toggles.className = 'layer-toggles deckgl-layer-toggles';
+    // ElectroPulse: Hide layer toggles for election variant
+    if (SITE_VARIANT === 'election') { toggles.style.display = 'none'; }
 
     const layerDefs = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'flat');
     const _wmKey = getSecretState('WORLDMONITOR_API_KEY').present;
@@ -4351,6 +4355,8 @@ export class DeckGLMap {
   private createLegend(): void {
     const legend = document.createElement('div');
     legend.className = 'map-legend deckgl-legend';
+    // ElectroPulse: Hide legend for election variant
+    if (SITE_VARIANT === 'election') { legend.style.display = 'none'; }
 
     // SVG shapes for different marker types
     const shapes = {
