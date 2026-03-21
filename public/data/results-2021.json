@@ -1,0 +1,183 @@
+{
+  "election_year": 2021,
+  "counting_date": "2021-05-02",
+  "states": {
+    "WEST BENGAL": {
+      "total_seats": 294,
+      "contested": 292,
+      "majority": 148,
+      "turnout_pct": 82.27,
+      "winning_party": "AITC",
+      "cm": "Mamata Banerjee",
+      "tally": {
+        "AITC": 213,
+        "BJP": 77,
+        "IND": 1,
+        "RSMP": 1
+      },
+      "alliance_tally": {
+        "INDIA": 213,
+        "NDA": 77,
+        "OTHERS": 2
+      },
+      "vote_share": {
+        "AITC": 47.94,
+        "BJP": 38.13,
+        "CPI(M)": 4.73,
+        "INC": 2.93,
+        "IND": 1.58,
+        "RSMP": 1.36,
+        "NOTA": 1.08,
+        "AIFB": 0.53,
+        "BSP": 0.39,
+        "CPI": 0.20,
+        "RSP": 0.21
+      }
+    },
+    "TAMIL NADU": {
+      "total_seats": 234,
+      "contested": 234,
+      "majority": 118,
+      "turnout_pct": 72.78,
+      "winning_party": "DMK",
+      "cm": "M.K. Stalin",
+      "tally": {
+        "DMK": 133,
+        "AIADMK": 66,
+        "INC": 18,
+        "PMK": 5,
+        "VCK": 4,
+        "BJP": 4,
+        "CPI(M)": 2,
+        "CPI": 2
+      },
+      "alliance_tally": {
+        "INDIA": 159,
+        "NDA": 75,
+        "OTHERS": 0
+      },
+      "vote_share": {
+        "DMK": 37.70,
+        "AIADMK": 33.29,
+        "INC": 4.30,
+        "PMK": 5.52,
+        "BJP": 2.62,
+        "VCK": 1.76,
+        "AMMK": 2.35,
+        "MNM": 2.59,
+        "NTK": 6.58,
+        "CPI(M)": 0.68,
+        "CPI": 0.53,
+        "NOTA": 1.20
+      }
+    },
+    "KERALA": {
+      "total_seats": 140,
+      "contested": 140,
+      "majority": 71,
+      "turnout_pct": 74.06,
+      "winning_party": "CPI(M)",
+      "cm": "Pinarayi Vijayan",
+      "tally": {
+        "CPI(M)": 62,
+        "INC": 21,
+        "CPI": 17,
+        "IUML": 15,
+        "KC(M)": 5,
+        "JD(S)": 2,
+        "RSP": 2,
+        "KC(J)": 2,
+        "NCP": 1,
+        "INL": 1,
+        "KEC": 1,
+        "CONG(S)": 1,
+        "JKC": 1,
+        "IND": 9
+      },
+      "alliance_tally": {
+        "LDF": 99,
+        "INDIA": 41,
+        "NDA": 0,
+        "OTHERS": 0
+      },
+      "vote_share": {
+        "CPI(M)": 25.62,
+        "INC": 17.12,
+        "CPI": 6.23,
+        "IUML": 7.88,
+        "BJP": 12.47,
+        "KC(M)": 2.82,
+        "JD(S)": 1.70,
+        "RSP": 0.96,
+        "NCP": 0.62,
+        "NOTA": 0.67
+      }
+    },
+    "ASSAM": {
+      "total_seats": 126,
+      "contested": 126,
+      "majority": 64,
+      "turnout_pct": 82.04,
+      "winning_party": "BJP",
+      "cm": "Himanta Biswa Sarma",
+      "tally": {
+        "BJP": 60,
+        "INC": 29,
+        "AIUDF": 16,
+        "AGP": 9,
+        "BPF": 4,
+        "UPPL": 6,
+        "CPI(M)": 1,
+        "IND": 1
+      },
+      "alliance_tally": {
+        "NDA": 75,
+        "INDIA": 50,
+        "OTHERS": 1
+      },
+      "vote_share": {
+        "BJP": 33.21,
+        "INC": 29.67,
+        "AIUDF": 9.29,
+        "AGP": 7.88,
+        "BPF": 4.04,
+        "UPPL": 3.39,
+        "AJP": 4.39,
+        "RD": 0.84,
+        "CPI(M)": 0.51,
+        "NOTA": 1.03
+      }
+    },
+    "PUDUCHERRY": {
+      "total_seats": 30,
+      "contested": 30,
+      "majority": 16,
+      "turnout_pct": 81.90,
+      "winning_party": "AINRC",
+      "cm": "N. Rangasamy",
+      "tally": {
+        "AINRC": 10,
+        "BJP": 6,
+        "DMK": 6,
+        "INC": 2,
+        "IND": 6
+      },
+      "alliance_tally": {
+        "NDA": 16,
+        "INDIA": 8,
+        "OTHERS": 6
+      },
+      "vote_share": {
+        "AINRC": 25.96,
+        "BJP": 13.71,
+        "DMK": 16.09,
+        "INC": 11.29,
+        "IND": 18.69,
+        "AIADMK": 5.79,
+        "NOTA": 1.86
+      }
+    }
+  },
+  "source": "Election Commission of India (results.eci.gov.in)",
+  "attribution": "Data compiled for ElectroPulse from ECI, StatisticsTimes, and TCPD/Ashoka"
+}
