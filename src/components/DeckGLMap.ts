@@ -350,6 +350,18 @@ export class DeckGLMap {
 
   // ElectroPulse: Assembly constituency GeoJSON for election variant
   private electionGeoJsonData: GeoJSON.FeatureCollection | null = null;
+  private selectedElectionState: string | null = null;
+
+  private static readonly ELECTION_STATE_META: Record<string, {
+    code: string; seats: number; color: string; phase: string; date: string;
+    bounds: [[number, number], [number, number]];
+  }> = {
+    'WEST BENGAL': { code: 'wb', seats: 294, color: '#ff6b35', phase: 'Phase 1 & 2', date: 'Apr 23 & 29', bounds: [[85.82, 21.48], [89.88, 27.21]] },
+    'TAMIL NADU':  { code: 'tn', seats: 234, color: '#2ec4b6', phase: 'Phase 1', date: 'Apr 23', bounds: [[76.23, 8.08], [80.35, 13.56]] },
+    'KERALA':      { code: 'kl', seats: 140, color: '#e71d36', phase: 'Phase 1', date: 'Apr 9', bounds: [[74.87, 8.29], [77.41, 12.79]] },
+    'ASSAM':       { code: 'as', seats: 126, color: '#7209b7', phase: 'Phase 1', date: 'Apr 9', bounds: [[89.70, 24.14], [96.02, 27.96]] },
+    'PUDUCHERRY':  { code: 'py', seats: 30, color: '#ffbe0b', phase: 'Phase 1', date: 'Apr 9', bounds: [[79.50, 10.70], [80.00, 12.10]] },
+  };
 
   // CII choropleth data
   private ciiScoresMap: Map<string, { score: number; level: string }> = new Map();
@@ -491,6 +503,10 @@ export class DeckGLMap {
           .then((data: GeoJSON.FeatureCollection) => {
             this.electionGeoJsonData = data;
             this.render();
+            // Center on India after data loads
+            if (this.maplibreMap) {
+              this.maplibreMap.flyTo({ center: [82, 22], zoom: 4.2, duration: 1200 });
+            }
           })
           .catch(err => console.warn('[ElectroPulse] Failed to load constituency GeoJSON:', err));
       }
@@ -3212,6 +3228,7 @@ export class DeckGLMap {
     if (!this.electionGeoJsonData) return null;
     const isLight = getCurrentTheme() === 'light';
     const colors = DeckGLMap.ELECTION_STATE_COLORS;
+    const selected = this.selectedElectionState;
     return new GeoJsonLayer({
       id: 'election-constituencies-layer',
       data: this.electionGeoJsonData,
@@ -3219,18 +3236,130 @@ export class DeckGLMap {
       stroked: true,
       getFillColor: (f: { properties?: Record<string, unknown> }) => {
         const st = f.properties?.ST_NAME as string | undefined;
-        return st ? (colors[st] ?? [100, 100, 100, 80]) : [100, 100, 100, 80];
+        if (!st) return [100, 100, 100, 40] as [number, number, number, number];
+        const base = colors[st] ?? [100, 100, 100, 80];
+        if (selected && st !== selected) return [base[0], base[1], base[2], 30] as [number, number, number, number];
+        if (selected && st === selected) return [base[0], base[1], base[2], 200] as [number, number, number, number];
+        return base;
       },
-      getLineColor: isLight
-        ? [80, 80, 80, 120] as [number, number, number, number]
-        : [200, 200, 200, 60] as [number, number, number, number],
-      getLineWidth: 1,
+      getLineColor: (f: { properties?: Record<string, unknown> }) => {
+        const st = f.properties?.ST_NAME as string | undefined;
+        if (selected && st === selected) {
+          return isLight ? [60, 60, 60, 200] as [number, number, number, number] : [255, 255, 255, 120] as [number, number, number, number];
+        }
+        return isLight ? [80, 80, 80, 80] as [number, number, number, number] : [200, 200, 200, 40] as [number, number, number, number];
+      },
+      getLineWidth: (f: { properties?: Record<string, unknown> }) => {
+        const st = f.properties?.ST_NAME as string | undefined;
+        return (selected && st === selected) ? 2 : 1;
+      },
       lineWidthMinPixels: 0.5,
       pickable: true,
       autoHighlight: true,
       highlightColor: [255, 255, 255, 80] as [number, number, number, number],
-      updateTriggers: { getFillColor: [this.electionGeoJsonData] },
+      updateTriggers: {
+        getFillColor: [this.electionGeoJsonData, selected],
+        getLineColor: [selected, isLight],
+        getLineWidth: [selected],
+      },
     });
+  }
+
+  private selectElectionState(stateName: string): void {
+    const meta = DeckGLMap.ELECTION_STATE_META[stateName];
+    if (!meta || !this.maplibreMap) return;
+    this.selectedElectionState = stateName;
+    this.render();
+    const [[minLon, minLat], [maxLon, maxLat]] = meta.bounds;
+    this.maplibreMap.fitBounds([[minLon, minLat], [maxLon, maxLat]], {
+      padding: 40,
+      duration: 800,
+      maxZoom: 8,
+    });
+    this.showElectionStatePanel(stateName);
+  }
+
+  private deselectElectionState(): void {
+    this.selectedElectionState = null;
+    this.render();
+    if (this.maplibreMap) {
+      this.maplibreMap.flyTo({ center: [82, 22], zoom: 4.2, duration: 800 });
+    }
+    this.hideElectionStatePanel();
+  }
+
+  private showElectionStatePanel(stateName: string): void {
+    this.hideElectionStatePanel();
+    const meta = DeckGLMap.ELECTION_STATE_META[stateName];
+    if (!meta) return;
+
+    const acCount = this.electionGeoJsonData?.features.filter(
+      f => f.properties?.ST_NAME === stateName
+    ).length ?? 0;
+
+    const constituencies = (this.electionGeoJsonData?.features ?? [])
+      .filter(f => f.properties?.ST_NAME === stateName)
+      .map(f => ({ name: f.properties?.AC_NAME as string, no: f.properties?.AC_NO as number, dist: f.properties?.DIST_NAME as string }))
+      .sort((a, b) => a.no - b.no);
+
+    const panel = document.createElement('div');
+    panel.id = 'election-state-panel';
+    panel.style.cssText = `
+      position: absolute; top: 12px; left: 12px; z-index: 100;
+      background: rgba(10, 15, 10, 0.92); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+      padding: 16px; width: 280px; max-height: calc(100% - 24px);
+      overflow-y: auto; color: #e0e0e0; font-family: inherit;
+      scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent;
+    `;
+
+    const acListHtml = constituencies.map(c =>
+      `<div style="padding:5px 8px;border-bottom:1px solid rgba(255,255,255,0.05);font-size:12px;display:flex;justify-content:space-between;cursor:default;" class="ep-ac-row" data-ac-no="${c.no}"><span style="opacity:0.5;min-width:28px;">${c.no}</span><span style="flex:1;margin:0 8px;">${this.escapeStr(c.name)}</span><span style="opacity:0.4;font-size:11px;">${this.escapeStr(c.dist)}</span></div>`
+    ).join('');
+
+    panel.innerHTML = `
+      <button id="epBackBtn" style="background:none;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;margin-bottom:12px;display:flex;align-items:center;gap:4px;">
+        <span style="font-size:16px;">←</span> All States
+      </button>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <div style="width:14px;height:14px;border-radius:3px;background:${meta.color};flex-shrink:0;"></div>
+        <div>
+          <div style="font-size:16px;font-weight:600;letter-spacing:0.5px;">${this.escapeStr(stateName.split(' ').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' '))}</div>
+          <div style="font-size:11px;opacity:0.5;margin-top:2px;">${meta.phase} · ${meta.date}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <div style="flex:1;background:rgba(255,255,255,0.06);border-radius:8px;padding:10px 12px;text-align:center;">
+          <div style="font-size:22px;font-weight:700;color:${meta.color};">${meta.seats}</div>
+          <div style="font-size:10px;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;">Total Seats</div>
+        </div>
+        <div style="flex:1;background:rgba(255,255,255,0.06);border-radius:8px;padding:10px 12px;text-align:center;">
+          <div style="font-size:22px;font-weight:700;">${Math.ceil(meta.seats / 2) + 1}</div>
+          <div style="font-size:10px;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;">Majority</div>
+        </div>
+      </div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin-bottom:8px;">Constituencies (${acCount})</div>
+      <div style="max-height:280px;overflow-y:auto;border:1px solid rgba(255,255,255,0.06);border-radius:6px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;">
+        ${acListHtml}
+      </div>
+      <div style="margin-top:12px;font-size:10px;opacity:0.3;text-align:center;">Results: May 4, 2026</div>
+    `;
+
+    const wrapper = this.container.querySelector('.deckgl-map-wrapper') || this.container;
+    wrapper.appendChild(panel);
+
+    panel.querySelector('#epBackBtn')?.addEventListener('click', () => this.deselectElectionState());
+  }
+
+  private hideElectionStatePanel(): void {
+    const existing = this.container.querySelector('#election-state-panel');
+    if (existing) existing.remove();
+  }
+
+  private escapeStr(s: string): string {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
   }
 
   private createSpeciesRecoveryLayer(): ScatterplotLayer {
@@ -3568,6 +3697,16 @@ export class DeckGLMap {
 
     const rawClickLayerId = info.layer?.id || '';
     const layerId = rawClickLayerId.endsWith('-ghost') ? rawClickLayerId.slice(0, -6) : rawClickLayerId;
+
+    // ElectroPulse: Click on constituency → zoom to state + show panel
+    if (layerId === 'election-constituencies-layer' && SITE_VARIANT === 'election') {
+      const props = (info.object as { properties?: Record<string, unknown> })?.properties;
+      const stateName = props?.ST_NAME as string | undefined;
+      if (stateName) {
+        this.selectElectionState(stateName);
+      }
+      return;
+    }
 
     // Hotspots show popup with related news
     if (layerId === 'hotspots-layer') {
