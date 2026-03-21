@@ -111,6 +111,7 @@ import { getCountriesGeoJson, getCountryAtCoordinates, getCountryBbox } from '@/
 import type { FeatureCollection, Geometry } from 'geojson';
 
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
+import { getPartyColor } from '@/config/election-parties';
 import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { fetchWebcamImage } from '@/services/webcams';
@@ -351,6 +352,8 @@ export class DeckGLMap {
   // ElectroPulse: Assembly constituency GeoJSON for election variant
   private electionGeoJsonData: GeoJSON.FeatureCollection | null = null;
   private selectedElectionState: string | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private results2021: Record<string, any> | null = null;
 
   private static readonly ELECTION_STATE_META: Record<string, {
     code: string; seats: number; color: string; phase: string; date: string;
@@ -509,6 +512,12 @@ export class DeckGLMap {
             }
           })
           .catch(err => console.warn('[ElectroPulse] Failed to load constituency GeoJSON:', err));
+
+        // Load 2021 historical results
+        fetch('/data/results-2021.json')
+          .then(r => r.json())
+          .then(data => { this.results2021 = data?.states ?? null; })
+          .catch(err => console.warn('[ElectroPulse] Failed to load 2021 results:', err));
       }
 
       this.render();
@@ -3302,16 +3311,65 @@ export class DeckGLMap {
       .map(f => ({ name: f.properties?.AC_NAME as string, no: f.properties?.AC_NO as number, dist: f.properties?.DIST_NAME as string }))
       .sort((a, b) => a.no - b.no);
 
+    // Get 2021 results for this state
+    const stateResults = this.results2021?.[stateName];
+    const tally: Record<string, number> = stateResults?.tally ?? {};
+    const allianceTally: Record<string, number> = stateResults?.alliance_tally ?? {};
+    const voteShare: Record<string, number> = stateResults?.vote_share ?? {};
+    const majority = Math.ceil(meta.seats / 2) + 1;
+
+    // Sort parties by seats won (descending)
+    const sortedParties = Object.entries(tally).sort((a, b) => b[1] - a[1]);
+    const maxSeats = sortedParties.length > 0 ? sortedParties[0][1] : 1;
+
+    // Build seat tally bars HTML
+    const tallyBarsHtml = sortedParties.map(([party, seats]) => {
+      const color = getPartyColor(party);
+      const pct = (seats / meta.seats) * 100;
+      const vs = voteShare[party] ? `${voteShare[party].toFixed(1)}%` : '';
+      return `<div style="margin-bottom:6px;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px;">
+          <span style="font-weight:500;">${this.escapeStr(party)}</span>
+          <span style="opacity:0.6;">${vs}</span>
+        </div>
+        <div style="position:relative;height:22px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden;">
+          <div style="position:absolute;left:0;top:0;height:100%;width:${pct}%;background:${color};border-radius:4px;transition:width 0.6s ease;"></div>
+          <span style="position:absolute;right:6px;top:3px;font-size:12px;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,0.5);">${seats}</span>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Majority line position
+    const majorityPct = (majority / meta.seats) * 100;
+
+    // Alliance summary HTML
+    const allianceColors: Record<string, string> = { NDA: '#ff9933', INDIA: '#19aaed', LDF: '#cc2222', OTHERS: '#888888' };
+    const allianceSummaryHtml = Object.entries(allianceTally)
+      .filter(([, seats]) => seats > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([alliance, seats]) => {
+        const color = allianceColors[alliance] ?? '#888';
+        return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;">
+          <div style="width:10px;height:10px;border-radius:2px;background:${color};flex-shrink:0;"></div>
+          <span style="flex:1;font-size:12px;">${this.escapeStr(alliance)}</span>
+          <span style="font-size:14px;font-weight:700;color:${color};">${seats}</span>
+        </div>`;
+      }).join('');
+
     const panel = document.createElement('div');
     panel.id = 'election-state-panel';
     panel.style.cssText = `
       position: absolute; top: 12px; left: 12px; z-index: 100;
       background: rgba(10, 15, 10, 0.92); backdrop-filter: blur(8px);
       border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
-      padding: 16px; width: 280px; max-height: calc(100% - 30px);
+      padding: 16px; width: 300px; max-height: calc(100% - 30px);
       overflow-y: auto; color: #e0e0e0; font-family: inherit;
       scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent;
     `;
+
+    const titleCased = stateName.split(' ').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+    const winnerParty = stateResults?.winning_party ?? '';
+    const winnerCM = stateResults?.cm ?? '';
 
     const acListHtml = constituencies.map(c =>
       `<div style="padding:5px 8px;border-bottom:1px solid rgba(255,255,255,0.05);font-size:12px;display:flex;justify-content:space-between;cursor:default;" class="ep-ac-row" data-ac-no="${c.no}"><span style="opacity:0.5;min-width:28px;">${c.no}</span><span style="flex:1;margin:0 8px;">${this.escapeStr(c.name)}</span><span style="opacity:0.4;font-size:11px;">${this.escapeStr(c.dist)}</span></div>`
@@ -3324,7 +3382,7 @@ export class DeckGLMap {
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
         <div style="width:14px;height:14px;border-radius:3px;background:${meta.color};flex-shrink:0;"></div>
         <div>
-          <div style="font-size:16px;font-weight:600;letter-spacing:0.5px;">${this.escapeStr(stateName.split(' ').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' '))}</div>
+          <div style="font-size:16px;font-weight:600;letter-spacing:0.5px;">${this.escapeStr(titleCased)}</div>
           <div style="font-size:11px;opacity:0.5;margin-top:2px;">${meta.phase} · ${meta.date}</div>
         </div>
       </div>
@@ -3334,12 +3392,26 @@ export class DeckGLMap {
           <div style="font-size:10px;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;">Total Seats</div>
         </div>
         <div style="flex:1;background:rgba(255,255,255,0.06);border-radius:8px;padding:10px 12px;text-align:center;">
-          <div style="font-size:22px;font-weight:700;">${Math.ceil(meta.seats / 2) + 1}</div>
+          <div style="font-size:22px;font-weight:700;">${majority}</div>
           <div style="font-size:10px;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;">Majority</div>
         </div>
       </div>
+      ${sortedParties.length > 0 ? `
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin-bottom:8px;">2021 Results ${winnerCM ? '· ' + this.escapeStr(winnerCM) : ''}</div>
+        <div style="position:relative;margin-bottom:4px;">
+          ${tallyBarsHtml}
+          <div style="position:absolute;top:0;bottom:0;left:${majorityPct}%;width:1px;background:rgba(255,255,255,0.4);pointer-events:none;"></div>
+          <div style="position:absolute;top:-2px;left:${majorityPct}%;transform:translateX(-50%);font-size:9px;color:rgba(255,255,255,0.5);pointer-events:none;">▼ ${majority}</div>
+        </div>
+        ${allianceSummaryHtml ? `
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin:12px 0 6px;">Alliance Tally</div>
+          <div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:6px 10px;margin-bottom:14px;">
+            ${allianceSummaryHtml}
+          </div>
+        ` : ''}
+      ` : ''}
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin-bottom:8px;">Constituencies (${acCount})</div>
-      <div style="max-height:400px;overflow-y:auto;border:1px solid rgba(255,255,255,0.06);border-radius:6px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;">
+      <div style="max-height:260px;overflow-y:auto;border:1px solid rgba(255,255,255,0.06);border-radius:6px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;">
         ${acListHtml}
       </div>
       <div style="margin-top:12px;font-size:10px;opacity:0.3;text-align:center;">Results: May 4, 2026</div>

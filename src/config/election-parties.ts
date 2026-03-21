@@ -2,8 +2,6 @@
 // Colors, alliances, and metadata for 2026 Assembly Elections
 // States: West Bengal, Tamil Nadu, Kerala, Assam, Puducherry
 
-import { SITE_VARIANT } from './variant';
-
 // ============================================
 // ALLIANCE BLOCS
 // ============================================
