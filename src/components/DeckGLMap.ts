@@ -348,6 +348,9 @@ export class DeckGLMap {
   private countriesGeoJsonData: FeatureCollection<Geometry> | null = null;
   private conflictZoneGeoJson: GeoJSON.FeatureCollection | null = null;
 
+  // ElectroPulse: Assembly constituency GeoJSON for election variant
+  private electionGeoJsonData: GeoJSON.FeatureCollection | null = null;
+
   // CII choropleth data
   private ciiScoresMap: Map<string, { score: number; level: string }> = new Map();
   private ciiScoresVersion = 0;
@@ -480,6 +483,18 @@ export class DeckGLMap {
       this.initDeck();
       this.loadCountryBoundaries();
       this.fetchServerBases();
+
+      // ElectroPulse: Load assembly constituency GeoJSON for election variant
+      if (SITE_VARIANT === 'election' && !this.electionGeoJsonData) {
+        fetch('/data/geo/all_5_states_ac.geojson')
+          .then(r => r.json())
+          .then((data: GeoJSON.FeatureCollection) => {
+            this.electionGeoJsonData = data;
+            this.render();
+          })
+          .catch(err => console.warn('[ElectroPulse] Failed to load constituency GeoJSON:', err));
+      }
+
       this.render();
     });
 
@@ -1212,6 +1227,12 @@ export class DeckGLMap {
     } else {
       if (this.dayNightIntervalId) this.stopDayNightTimer();
       this.layerCache.delete('day-night-layer');
+    }
+
+    // ElectroPulse: Assembly constituency boundaries (election variant)
+    if (SITE_VARIANT === 'election') {
+      const elLayer = this.createElectionConstituenciesLayer();
+      if (elLayer) layers.push(elLayer);
     }
 
     // Undersea cables layer
@@ -3178,6 +3199,40 @@ export class DeckGLMap {
     });
   }
 
+  // ElectroPulse: Assembly constituency choropleth layer for election variant
+  private static readonly ELECTION_STATE_COLORS: Record<string, [number, number, number, number]> = {
+    'WEST BENGAL': [255, 107, 53, 150],
+    'TAMIL NADU':  [46, 196, 182, 150],
+    'KERALA':      [231, 29, 54, 150],
+    'ASSAM':       [114, 9, 183, 150],
+    'PUDUCHERRY':  [255, 190, 11, 150],
+  };
+
+  private createElectionConstituenciesLayer(): GeoJsonLayer | null {
+    if (!this.electionGeoJsonData) return null;
+    const isLight = getCurrentTheme() === 'light';
+    const colors = DeckGLMap.ELECTION_STATE_COLORS;
+    return new GeoJsonLayer({
+      id: 'election-constituencies-layer',
+      data: this.electionGeoJsonData,
+      filled: true,
+      stroked: true,
+      getFillColor: (f: { properties?: Record<string, unknown> }) => {
+        const st = f.properties?.ST_NAME as string | undefined;
+        return st ? (colors[st] ?? [100, 100, 100, 80]) : [100, 100, 100, 80];
+      },
+      getLineColor: isLight
+        ? [80, 80, 80, 120] as [number, number, number, number]
+        : [200, 200, 200, 60] as [number, number, number, number],
+      getLineWidth: 1,
+      lineWidthMinPixels: 0.5,
+      pickable: true,
+      autoHighlight: true,
+      highlightColor: [255, 255, 255, 80] as [number, number, number, number],
+      updateTriggers: { getFillColor: [this.electionGeoJsonData] },
+    });
+  }
+
   private createSpeciesRecoveryLayer(): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'species-recovery-layer',
@@ -3479,6 +3534,10 @@ export class DeckGLMap {
           ? `${obj.count} webcams`
           : (obj.title || obj.name || 'Webcam');
         return { html: `<div class="deckgl-tooltip"><strong>${text(label)}</strong></div>` };
+      }
+      case 'election-constituencies-layer': {
+        const p = obj.properties || obj;
+        return { html: `<div class="deckgl-tooltip"><strong>${text(p.AC_NAME)}</strong><br/>#${p.AC_NO} · ${text(p.DIST_NAME)}<br/><span style="opacity:.7">${text(p.ST_NAME)}</span></div>` };
       }
       default:
         return null;
