@@ -359,14 +359,14 @@ export class DeckGLMap {
   private constituencyResults2021: Record<string, any> | null = null;
 
   private static readonly ELECTION_STATE_META: Record<string, {
-    code: string; seats: number; color: string; phase: string; date: string;
+    code: string; eciCode: string; seats: number; color: string; phase: string; date: string;
     bounds: [[number, number], [number, number]];
   }> = {
-    'WEST BENGAL': { code: 'wb', seats: 294, color: '#ff6b35', phase: 'Phase 1 & 2', date: 'Apr 23 & 29', bounds: [[85.82, 21.48], [89.88, 27.21]] },
-    'TAMIL NADU':  { code: 'tn', seats: 234, color: '#2ec4b6', phase: 'Phase 1', date: 'Apr 23', bounds: [[76.23, 8.08], [80.35, 13.56]] },
-    'KERALA':      { code: 'kl', seats: 140, color: '#e71d36', phase: 'Phase 1', date: 'Apr 9', bounds: [[74.87, 8.29], [77.41, 12.79]] },
-    'ASSAM':       { code: 'as', seats: 126, color: '#7209b7', phase: 'Phase 1', date: 'Apr 9', bounds: [[89.70, 24.14], [96.02, 27.96]] },
-    'PUDUCHERRY':  { code: 'py', seats: 30, color: '#ffbe0b', phase: 'Phase 1', date: 'Apr 9', bounds: [[79.50, 10.70], [80.00, 12.10]] },
+    'WEST BENGAL': { code: 'wb', eciCode: 'S25', seats: 294, color: '#ff6b35', phase: 'Phase 1 & 2', date: 'Apr 23 & 29', bounds: [[85.82, 21.48], [89.88, 27.21]] },
+    'TAMIL NADU':  { code: 'tn', eciCode: 'S22', seats: 234, color: '#2ec4b6', phase: 'Phase 1', date: 'Apr 23', bounds: [[76.23, 8.08], [80.35, 13.56]] },
+    'KERALA':      { code: 'kl', eciCode: 'S11', seats: 140, color: '#e71d36', phase: 'Phase 1', date: 'Apr 9', bounds: [[74.87, 8.29], [77.41, 12.79]] },
+    'ASSAM':       { code: 'as', eciCode: 'S03', seats: 126, color: '#7209b7', phase: 'Phase 1', date: 'Apr 9', bounds: [[89.70, 24.14], [96.02, 27.96]] },
+    'PUDUCHERRY':  { code: 'py', eciCode: 'U07', seats: 30, color: '#ffbe0b', phase: 'Phase 1', date: 'Apr 9', bounds: [[79.50, 10.70], [80.00, 12.10]] },
   };
 
   // CII choropleth data
@@ -3528,19 +3528,228 @@ export class DeckGLMap {
       <div style="max-height:260px;overflow-y:auto;border:1px solid rgba(255,255,255,0.06);border-radius:6px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;">
         ${acListHtml}
       </div>
-      <div style="margin-top:12px;font-size:10px;opacity:0.3;text-align:center;">Results: May 4, 2026</div>
+      <button id="epVoterSearchBtn" style="margin-top:14px;width:100%;padding:10px;border:1px solid rgba(255,255,255,0.15);border-radius:8px;background:rgba(255,255,255,0.05);color:#e0e0e0;cursor:pointer;font-size:12px;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;transition:background 0.2s;" onmouseenter="this.style.background='rgba(255,255,255,0.1)'" onmouseleave="this.style.background='rgba(255,255,255,0.05)'">
+        <span style="font-size:16px;">🗳️</span> Check Your Name in Voter List
+      </button>
+      <div style="margin-top:10px;font-size:10px;opacity:0.3;text-align:center;">Results: May 4, 2026</div>
     `;
 
     const wrapper = this.container.querySelector('.deckgl-map-wrapper') || this.container;
     wrapper.appendChild(panel);
 
     panel.querySelector('#epBackBtn')?.addEventListener('click', () => this.deselectElectionState());
+    panel.querySelector('#epVoterSearchBtn')?.addEventListener('click', () => this.showVoterSearchPanel(stateName));
   }
 
   private hideElectionStatePanel(): void {
     const existing = this.container.querySelector('#election-state-panel');
     if (existing) existing.remove();
     this.hideConstituencyDetail();
+    this.hideVoterSearchPanel();
+  }
+
+  private showVoterSearchPanel(stateName: string): void {
+    this.hideVoterSearchPanel();
+    this.hideConstituencyDetail();
+    const meta = DeckGLMap.ELECTION_STATE_META[stateName];
+    if (!meta) return;
+
+    const stateTitleCased = stateName.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+    const eciCode = meta.eciCode;
+    const ECI_API = 'https://gateway-voters.eci.gov.in/api/v1';
+
+    // Create right-side drawer
+    const drawer = document.createElement('div');
+    drawer.id = 'election-voter-search-drawer';
+    drawer.style.cssText = `
+      position: fixed; top: 0; right: 0; z-index: 9999;
+      width: 360px; height: 100vh;
+      background: rgba(10, 15, 10, 0.96); backdrop-filter: blur(12px);
+      border-left: 1px solid rgba(255,255,255,0.1);
+      color: #e0e0e0; font-family: inherit;
+      overflow-y: auto; overflow-x: hidden;
+      transform: translateX(100%); transition: transform 0.3s ease;
+      scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent;
+    `;
+
+    const selectStyle = `width:100%;padding:10px 12px;border:1px solid rgba(255,255,255,0.12);border-radius:8px;background:rgba(255,255,255,0.06);color:#e0e0e0;font-size:13px;font-family:inherit;appearance:none;-webkit-appearance:none;cursor:pointer;outline:none;`;
+    const btnStyle = `width:100%;padding:12px;border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:opacity 0.2s;`;
+
+    drawer.innerHTML = `
+      <div style="padding:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.4;font-weight:500;">Voter Search</div>
+          <button id="epCloseVoterSearch" style="background:none;border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.6);cursor:pointer;font-size:13px;padding:4px 10px;border-radius:6px;">✕ Close</button>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+          <div style="font-size:28px;">🗳️</div>
+          <div>
+            <div style="font-size:17px;font-weight:600;">Check Your Name</div>
+            <div style="font-size:12px;opacity:0.5;margin-top:2px;">in the Electoral Roll</div>
+          </div>
+        </div>
+
+        <div style="height:1px;background:rgba(255,255,255,0.08);margin:16px 0;"></div>
+
+        <!-- Method 1: Search by EPIC -->
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.4;margin-bottom:10px;font-weight:500;">Search by Voter ID (EPIC)</div>
+        <div style="margin-bottom:12px;">
+          <input id="epEpicInput" type="text" placeholder="e.g. ABC1234567" maxlength="20"
+            style="width:100%;padding:10px 12px;border:1px solid rgba(255,255,255,0.12);border-radius:8px;background:rgba(255,255,255,0.06);color:#e0e0e0;font-size:14px;font-family:inherit;outline:none;letter-spacing:1px;text-transform:uppercase;" />
+        </div>
+        <button id="epSearchEpicBtn" style="${btnStyle}background:${meta.color};color:#fff;">
+          🔍 Search by EPIC on ECI
+        </button>
+
+        <div style="display:flex;align-items:center;gap:12px;margin:18px 0;">
+          <div style="flex:1;height:1px;background:rgba(255,255,255,0.08);"></div>
+          <div style="font-size:11px;opacity:0.3;">OR</div>
+          <div style="flex:1;height:1px;background:rgba(255,255,255,0.08);"></div>
+        </div>
+
+        <!-- Method 2: Search by Details -->
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.4;margin-bottom:10px;font-weight:500;">Search by Details</div>
+
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;opacity:0.5;display:block;margin-bottom:4px;">State</label>
+          <div style="padding:10px 12px;border:1px solid rgba(255,255,255,0.08);border-radius:8px;background:rgba(255,255,255,0.03);font-size:13px;color:${meta.color};font-weight:500;">${this.escapeStr(stateTitleCased)}</div>
+        </div>
+
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;opacity:0.5;display:block;margin-bottom:4px;">District</label>
+          <select id="epDistrictSelect" style="${selectStyle}">
+            <option value="">Loading districts...</option>
+          </select>
+        </div>
+
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;opacity:0.5;display:block;margin-bottom:4px;">Assembly Constituency</label>
+          <select id="epAcSelect" style="${selectStyle}" disabled>
+            <option value="">Select district first</option>
+          </select>
+        </div>
+
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;opacity:0.5;display:block;margin-bottom:4px;">Your Name</label>
+          <input id="epNameInput" type="text" placeholder="Full name as on voter ID"
+            style="width:100%;padding:10px 12px;border:1px solid rgba(255,255,255,0.12);border-radius:8px;background:rgba(255,255,255,0.06);color:#e0e0e0;font-size:13px;font-family:inherit;outline:none;" />
+        </div>
+
+        <button id="epSearchDetailsBtn" style="${btnStyle}background:rgba(255,255,255,0.1);color:#e0e0e0;border:1px solid rgba(255,255,255,0.15);">
+          🔍 Search on ECI Portal
+        </button>
+
+        <div style="height:1px;background:rgba(255,255,255,0.08);margin:18px 0;"></div>
+
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.4;margin-bottom:10px;font-weight:500;">Quick Links</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <a href="https://electoralsearch.eci.gov.in/" target="_blank" rel="noopener" style="padding:10px 12px;border:1px solid rgba(255,255,255,0.08);border-radius:8px;background:rgba(255,255,255,0.03);color:#e0e0e0;text-decoration:none;font-size:12px;display:flex;align-items:center;gap:8px;transition:background 0.2s;" onmouseenter="this.style.background='rgba(255,255,255,0.06)'" onmouseleave="this.style.background='rgba(255,255,255,0.03)'">
+            <span>🌐</span> ECI Electoral Search Portal
+          </a>
+          <a href="https://voters.eci.gov.in/" target="_blank" rel="noopener" style="padding:10px 12px;border:1px solid rgba(255,255,255,0.08);border-radius:8px;background:rgba(255,255,255,0.03);color:#e0e0e0;text-decoration:none;font-size:12px;display:flex;align-items:center;gap:8px;transition:background 0.2s;" onmouseenter="this.style.background='rgba(255,255,255,0.06)'" onmouseleave="this.style.background='rgba(255,255,255,0.03)'">
+            <span>📋</span> Voters' Services Portal
+          </a>
+          <a href="https://voters.eci.gov.in/download-eroll" target="_blank" rel="noopener" style="padding:10px 12px;border:1px solid rgba(255,255,255,0.08);border-radius:8px;background:rgba(255,255,255,0.03);color:#e0e0e0;text-decoration:none;font-size:12px;display:flex;align-items:center;gap:8px;transition:background 0.2s;" onmouseenter="this.style.background='rgba(255,255,255,0.06)'" onmouseleave="this.style.background='rgba(255,255,255,0.03)'">
+            <span>📥</span> Download Electoral Roll PDF
+          </a>
+        </div>
+
+        <div style="margin-top:18px;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;text-align:center;">
+          <div style="font-size:10px;opacity:0.25;">Data from Election Commission of India</div>
+          <div style="font-size:10px;opacity:0.2;margin-top:2px;">ElectroPulse · electropulse.vercel.app</div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(drawer);
+
+    // Animate in
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => { drawer.style.transform = 'translateX(0)'; });
+    });
+
+    // Backdrop
+    const backdrop = document.createElement('div');
+    backdrop.id = 'election-voter-search-backdrop';
+    backdrop.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.3);opacity:0;transition:opacity 0.3s ease;';
+    document.body.appendChild(backdrop);
+    requestAnimationFrame(() => { backdrop.style.opacity = '1'; });
+    backdrop.addEventListener('click', () => this.hideVoterSearchPanel());
+
+    // Close button
+    drawer.querySelector('#epCloseVoterSearch')?.addEventListener('click', () => this.hideVoterSearchPanel());
+
+    // EPIC search button — open ECI with epic pre-filled
+    drawer.querySelector('#epSearchEpicBtn')?.addEventListener('click', () => {
+      const epic = (drawer.querySelector('#epEpicInput') as HTMLInputElement)?.value.trim().toUpperCase();
+      if (epic) {
+        window.open(`https://electoralsearch.eci.gov.in/`, '_blank');
+      } else {
+        window.open('https://electoralsearch.eci.gov.in/', '_blank');
+      }
+    });
+
+    // Details search button — open ECI portal
+    drawer.querySelector('#epSearchDetailsBtn')?.addEventListener('click', () => {
+      window.open('https://electoralsearch.eci.gov.in/', '_blank');
+    });
+
+    // Load districts from ECI API
+    const districtSelect = drawer.querySelector('#epDistrictSelect') as HTMLSelectElement;
+    const acSelect = drawer.querySelector('#epAcSelect') as HTMLSelectElement;
+
+    fetch(`${ECI_API}/common/districts/${eciCode}`, {
+      headers: { 'Content-Type': 'application/json' }
+    })
+      .then(r => r.json())
+      .then((districts: { districtName: string; districtNumber: string; stateCode: string }[]) => {
+        if (!Array.isArray(districts)) throw new Error('Invalid response');
+        districtSelect.innerHTML = '<option value="">Select district</option>' +
+          districts.map(d => `<option value="${d.districtNumber}">${this.escapeStr(d.districtName)}</option>`).join('');
+      })
+      .catch(() => {
+        districtSelect.innerHTML = '<option value="">Could not load districts</option>';
+      });
+
+    // District change → load ACs
+    districtSelect.addEventListener('change', () => {
+      const distNum = districtSelect.value;
+      if (!distNum) {
+        acSelect.innerHTML = '<option value="">Select district first</option>';
+        acSelect.disabled = true;
+        return;
+      }
+      acSelect.innerHTML = '<option value="">Loading...</option>';
+      acSelect.disabled = true;
+
+      fetch(`${ECI_API}/common/acs/${eciCode}${distNum.padStart(2, '0')}`, {
+        headers: { 'Content-Type': 'application/json' }
+      })
+        .then(r => r.json())
+        .then((acs: { acName: string; acNumber: string }[]) => {
+          if (!Array.isArray(acs)) throw new Error('Invalid response');
+          acSelect.innerHTML = '<option value="">Select constituency</option>' +
+            acs.map(a => `<option value="${a.acNumber}">${this.escapeStr(a.acName)} (${a.acNumber})</option>`).join('');
+          acSelect.disabled = false;
+        })
+        .catch(() => {
+          acSelect.innerHTML = '<option value="">Could not load constituencies</option>';
+        });
+    });
+  }
+
+  private hideVoterSearchPanel(): void {
+    const drawer = document.getElementById('election-voter-search-drawer');
+    const backdrop = document.getElementById('election-voter-search-backdrop');
+    if (drawer) {
+      drawer.style.transform = 'translateX(100%)';
+      setTimeout(() => drawer.remove(), 300);
+    }
+    if (backdrop) {
+      backdrop.style.opacity = '0';
+      setTimeout(() => backdrop.remove(), 300);
+    }
   }
 
   private showConstituencyDetail(stateName: string, acNo: number, acName: string, distName: string): void {
