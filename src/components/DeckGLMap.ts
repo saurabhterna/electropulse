@@ -3305,15 +3305,16 @@ export class DeckGLMap {
 
   private createElectionLabelsLayer(): TextLayer | null {
     const selected = this.selectedElectionState;
-    if (!selected || this.electionSearchIndex.length === 0) return null;
-    const currentZoom = this.maplibreMap?.getZoom() ?? 0;
+    if (!selected || this.electionSearchIndex.length === 0 || !this.maplibreMap) return null;
+    const currentZoom = this.maplibreMap.getZoom();
     if (currentZoom < 7.5) return null;
 
     // Get viewport bounds — only label visible constituencies
-    const bounds = this.maplibreMap?.getBounds();
+    const bounds = this.maplibreMap.getBounds();
     const sw = bounds?.getSouthWest();
     const ne = bounds?.getNorthEast();
     const selectedAc = this.selectedElectionAcNo;
+    const map = this.maplibreMap;
 
     const labels = this.electionSearchIndex
       .filter(c => {
@@ -3324,17 +3325,23 @@ export class DeckGLMap {
         }
         return true;
       })
-      .map(c => ({
-        position: c.centroid as [number, number],
-        text: c.acName.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' '),
-        acNo: c.acNo,
-        isSelected: c.acNo === selectedAc,
-      }));
+      .map(c => {
+        const text = c.acName.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+        const px = map.project([c.centroid[0], c.centroid[1]]);
+        // Estimate label pixel width: ~7px per character + 8px padding
+        const halfW = (text.length * 3.5) + 4;
+        const halfH = 9;
+        return {
+          position: c.centroid as [number, number],
+          text,
+          acNo: c.acNo,
+          isSelected: c.acNo === selectedAc,
+          px: px.x, py: px.y,
+          halfW, halfH,
+        };
+      });
 
-    // Collision detection: skip labels whose centroids are too close
-    // At zoom 8→~0.06°, zoom 9→~0.03°, zoom 10→~0.015°
-    const minDist = Math.pow(2, 9 - currentZoom) * 0.03;
-    const minDistSq = minDist * minDist;
+    // Pixel-space collision: check if bounding boxes overlap
     const visible: typeof labels = [];
 
     // Always include selected constituency first
@@ -3343,13 +3350,15 @@ export class DeckGLMap {
 
     for (const label of labels) {
       if (label.isSelected) continue;
-      let tooClose = false;
+      let overlaps = false;
       for (const existing of visible) {
-        const dx = label.position[0] - existing.position[0];
-        const dy = label.position[1] - existing.position[1];
-        if (dx * dx + dy * dy < minDistSq) { tooClose = true; break; }
+        if (Math.abs(label.px - existing.px) < (label.halfW + existing.halfW) &&
+            Math.abs(label.py - existing.py) < (label.halfH + existing.halfH)) {
+          overlaps = true;
+          break;
+        }
       }
-      if (!tooClose) visible.push(label);
+      if (!overlaps) visible.push(label);
     }
 
     return new TextLayer({
