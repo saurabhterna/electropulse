@@ -1268,6 +1268,9 @@ export class DeckGLMap {
     if (SITE_VARIANT === 'election') {
       const elLayer = this.createElectionConstituenciesLayer();
       if (elLayer) layers.push(elLayer);
+      // Constituency name labels when zoomed into a state
+      const labelLayer = this.createElectionLabelsLayer();
+      if (labelLayer) layers.push(labelLayer);
     }
 
     // Undersea cables layer
@@ -3296,6 +3299,42 @@ export class DeckGLMap {
         getFillColor: [this.electionGeoJsonData, selected, selectedAc],
         getLineColor: [selected, selectedAc, isLight],
         getLineWidth: [selected, selectedAc],
+      },
+    });
+  }
+
+  private createElectionLabelsLayer(): TextLayer | null {
+    const selected = this.selectedElectionState;
+    if (!selected || this.electionSearchIndex.length === 0) return null;
+
+    const labels = this.electionSearchIndex
+      .filter(c => c.stateName === selected)
+      .map(c => ({
+        position: c.centroid as [number, number],
+        text: c.acName.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' '),
+        acNo: c.acNo,
+      }));
+
+    return new TextLayer({
+      id: 'election-labels-layer',
+      data: labels,
+      getPosition: (d: (typeof labels)[0]) => d.position,
+      getText: (d: (typeof labels)[0]) => d.text,
+      getSize: 12,
+      getColor: [255, 255, 255, 220],
+      getTextAnchor: 'middle',
+      getAlignmentBaseline: 'center',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      fontWeight: 600,
+      background: true,
+      getBackgroundColor: [0, 0, 0, 160],
+      backgroundPadding: [4, 2, 4, 2],
+      billboard: true,
+      sizeUnits: 'pixels' as const,
+      pickable: false,
+      updateTriggers: {
+        getPosition: [selected],
+        getText: [selected],
       },
     });
   }
