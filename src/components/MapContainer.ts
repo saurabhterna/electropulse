@@ -800,6 +800,12 @@ export class MapContainer {
     }
   }
 
+  public selectConstituencyFromSearch(stateName: string, acNo: number, acName: string, distName: string): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.selectConstituencyFromSearch(stateName, acNo, acName, distName);
+    }
+  }
+
   public triggerConflictClick(id: string): void {
     if (this.useDeckGL) {
       this.deckGLMap?.triggerConflictClick(id);

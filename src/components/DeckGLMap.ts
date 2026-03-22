@@ -352,6 +352,7 @@ export class DeckGLMap {
   // ElectroPulse: Assembly constituency GeoJSON for election variant
   private electionGeoJsonData: GeoJSON.FeatureCollection | null = null;
   private selectedElectionState: string | null = null;
+  private selectedElectionAcNo: number | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private results2021: Record<string, any> | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -3247,6 +3248,7 @@ export class DeckGLMap {
     const isLight = getCurrentTheme() === 'light';
     const colors = DeckGLMap.ELECTION_STATE_COLORS;
     const selected = this.selectedElectionState;
+    const selectedAc = this.selectedElectionAcNo;
     return new GeoJsonLayer({
       id: 'election-constituencies-layer',
       data: this.electionGeoJsonData,
@@ -3254,14 +3256,24 @@ export class DeckGLMap {
       stroked: true,
       getFillColor: (f: { properties?: Record<string, unknown> }) => {
         const st = f.properties?.ST_NAME as string | undefined;
+        const acNo = f.properties?.AC_NO as number | undefined;
         if (!st) return [100, 100, 100, 40] as [number, number, number, number];
         const base = colors[st] ?? [100, 100, 100, 80];
+        // Highlight selected constituency
+        if (selected && selectedAc && st === selected && acNo === selectedAc) {
+          return [255, 255, 255, 220] as [number, number, number, number];
+        }
         if (selected && st !== selected) return [base[0], base[1], base[2], 30] as [number, number, number, number];
         if (selected && st === selected) return [base[0], base[1], base[2], 200] as [number, number, number, number];
         return base;
       },
       getLineColor: (f: { properties?: Record<string, unknown> }) => {
         const st = f.properties?.ST_NAME as string | undefined;
+        const acNo = f.properties?.AC_NO as number | undefined;
+        // Bright outline for selected constituency
+        if (selected && selectedAc && st === selected && acNo === selectedAc) {
+          return [255, 255, 255, 255] as [number, number, number, number];
+        }
         if (selected && st === selected) {
           return isLight ? [60, 60, 60, 200] as [number, number, number, number] : [255, 255, 255, 120] as [number, number, number, number];
         }
@@ -3269,6 +3281,8 @@ export class DeckGLMap {
       },
       getLineWidth: (f: { properties?: Record<string, unknown> }) => {
         const st = f.properties?.ST_NAME as string | undefined;
+        const acNo = f.properties?.AC_NO as number | undefined;
+        if (selected && selectedAc && st === selected && acNo === selectedAc) return 4;
         return (selected && st === selected) ? 2 : 1;
       },
       lineWidthMinPixels: 0.5,
@@ -3276,9 +3290,9 @@ export class DeckGLMap {
       autoHighlight: true,
       highlightColor: [255, 255, 255, 80] as [number, number, number, number],
       updateTriggers: {
-        getFillColor: [this.electionGeoJsonData, selected],
-        getLineColor: [selected, isLight],
-        getLineWidth: [selected],
+        getFillColor: [this.electionGeoJsonData, selected, selectedAc],
+        getLineColor: [selected, selectedAc, isLight],
+        getLineWidth: [selected, selectedAc],
       },
     });
   }
@@ -3440,6 +3454,8 @@ export class DeckGLMap {
 
   private showConstituencyDetail(stateName: string, acNo: number, acName: string, distName: string): void {
     this.hideConstituencyDetail();
+    this.selectedElectionAcNo = acNo;
+    this.render(); // re-render to highlight on map
     const meta = DeckGLMap.ELECTION_STATE_META[stateName];
     if (!meta) return;
 
@@ -3575,6 +3591,8 @@ export class DeckGLMap {
   }
 
   private hideConstituencyDetail(): void {
+    const hadSelection = this.selectedElectionAcNo !== null;
+    this.selectedElectionAcNo = null;
     const drawer = document.getElementById('election-constituency-drawer');
     const backdrop = document.getElementById('election-constituency-backdrop');
     if (drawer) {
@@ -3585,6 +3603,7 @@ export class DeckGLMap {
       backdrop.style.opacity = '0';
       setTimeout(() => backdrop.remove(), 300);
     }
+    if (hadSelection) this.render(); // remove highlight from map
   }
 
   // ElectroPulse: Constituency search bar
@@ -3772,6 +3791,30 @@ export class DeckGLMap {
     setTimeout(() => {
       this.showConstituencyDetail(c.stateName, c.acNo, c.acName, c.distName);
     }, 400);
+  }
+
+  /** Public method for ⌘K search to zoom to a constituency */
+  public selectConstituencyFromSearch(stateName: string, acNo: number, acName: string, distName: string): void {
+    // Look up centroid from search index
+    const entry = this.electionSearchIndex.find(c => c.stateName === stateName && c.acNo === acNo);
+    if (entry) {
+      this.zoomToConstituency({ ...entry, distName: entry.distName || distName });
+      return;
+    }
+    // Fallback: compute centroid from GeoJSON
+    const feature = this.electionGeoJsonData?.features.find(
+      f => f.properties?.ST_NAME === stateName && f.properties?.AC_NO === acNo
+    );
+    if (feature) {
+      let sumLon = 0, sumLat = 0, count = 0;
+      const geom = feature.geometry as { type: string; coordinates: unknown };
+      const processCoords = (coords: number[][]) => { for (const c of coords) { sumLon += c[0]; sumLat += c[1]; count++; } };
+      if (geom.type === 'Polygon') processCoords((geom.coordinates as number[][][])[0]);
+      else if (geom.type === 'MultiPolygon') for (const poly of (geom.coordinates as number[][][][])) processCoords(poly[0]);
+      const centroid: [number, number] = count > 0 ? [sumLon / count, sumLat / count] : [82, 22];
+      const dist = (feature.properties?.DIST_NAME as string) || distName;
+      this.zoomToConstituency({ acNo, acName, distName: dist, stateName, centroid });
+    }
   }
 
   private escapeStr(s: string): string {

@@ -59,11 +59,36 @@ export class SearchManager implements AppModule {
         ? { placeholder: 'Search or type a command...' }
         : SITE_VARIANT === 'finance'
           ? { placeholder: t('modals.search.placeholderFinance') }
-          : { placeholder: t('modals.search.placeholder') };
+          : SITE_VARIANT === 'election'
+            ? { placeholder: 'Search 824 constituencies...' }
+            : { placeholder: t('modals.search.placeholder') };
     this.ctx.searchModal = new SearchModal(this.ctx.container, searchOptions);
 
     if (SITE_VARIANT === 'happy') {
       // Happy variant: no geopolitical/military/infrastructure sources
+    } else if (SITE_VARIANT === 'election') {
+      // Election variant: load constituencies from JSON
+      fetch('/data/constituency-results-2021.json')
+        .then(r => r.json())
+        .then((data: { states?: Record<string, Record<string, { ac_name: string; winner?: string; party?: string }>> }) => {
+          if (!data?.states || !this.ctx.searchModal) return;
+          const items: { id: string; title: string; subtitle: string; data: { acNo: number; acName: string; distName: string; stateName: string } }[] = [];
+          for (const [stateName, constituencies] of Object.entries(data.states)) {
+            for (const [acNo, info] of Object.entries(constituencies)) {
+              const titleCased = (info.ac_name || '').split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+              const stateTitleCased = stateName.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+              const winnerInfo = info.winner ? ` · ${info.party}` : '';
+              items.push({
+                id: `${stateName}-${acNo}`,
+                title: `${titleCased} (#${acNo})`,
+                subtitle: `${stateTitleCased}${winnerInfo}`,
+                data: { acNo: parseInt(acNo, 10), acName: info.ac_name, distName: '', stateName },
+              });
+            }
+          }
+          this.ctx.searchModal!.registerSource('constituency', items);
+        })
+        .catch(() => {});
     } else if (SITE_VARIANT === 'tech') {
       this.ctx.searchModal.registerSource('techcompany', TECH_COMPANIES.map(c => ({
         id: c.id,
@@ -379,6 +404,11 @@ export class SearchManager implements AppModule {
         const { code, name } = result.data as { code: string; name: string };
         trackCountrySelected(code, name, 'search');
         this.callbacks.openCountryBriefByCode(code, name);
+        break;
+      }
+      case 'constituency': {
+        const c = result.data as { acNo: number; acName: string; distName: string; stateName: string };
+        this.ctx.map?.selectConstituencyFromSearch(c.stateName, c.acNo, c.acName, c.distName);
         break;
       }
     }
