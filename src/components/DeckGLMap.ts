@@ -3306,24 +3306,49 @@ export class DeckGLMap {
   private createElectionLabelsLayer(): TextLayer | null {
     const selected = this.selectedElectionState;
     if (!selected || this.electionSearchIndex.length === 0) return null;
-    // Only show labels when zoomed in enough (avoid clutter at state overview)
     const currentZoom = this.maplibreMap?.getZoom() ?? 0;
     if (currentZoom < 7.5) return null;
 
+    // Get viewport bounds — only label visible constituencies
+    const bounds = this.maplibreMap?.getBounds();
+    const sw = bounds?.getSouthWest();
+    const ne = bounds?.getNorthEast();
+
     const labels = this.electionSearchIndex
-      .filter(c => c.stateName === selected)
+      .filter(c => {
+        if (c.stateName !== selected) return false;
+        if (sw && ne) {
+          const [lon, lat] = c.centroid;
+          if (lon < sw.lng || lon > ne.lng || lat < sw.lat || lat > ne.lat) return false;
+        }
+        return true;
+      })
       .map(c => ({
         position: c.centroid as [number, number],
         text: c.acName.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' '),
         acNo: c.acNo,
       }));
 
+    // Collision detection: skip labels whose centroids are too close
+    const minDist = Math.pow(2, 10 - currentZoom) * 0.12;
+    const minDistSq = minDist * minDist;
+    const visible: typeof labels = [];
+    for (const label of labels) {
+      let tooClose = false;
+      for (const existing of visible) {
+        const dx = label.position[0] - existing.position[0];
+        const dy = label.position[1] - existing.position[1];
+        if (dx * dx + dy * dy < minDistSq) { tooClose = true; break; }
+      }
+      if (!tooClose) visible.push(label);
+    }
+
     return new TextLayer({
       id: 'election-labels-layer',
-      data: labels,
-      getPosition: (d: (typeof labels)[0]) => d.position,
-      getText: (d: (typeof labels)[0]) => d.text,
-      getSize: 12,
+      data: visible,
+      getPosition: (d: (typeof visible)[0]) => d.position,
+      getText: (d: (typeof visible)[0]) => d.text,
+      getSize: 11,
       getColor: [255, 255, 255, 220],
       getTextAnchor: 'middle',
       getAlignmentBaseline: 'center',
@@ -3336,8 +3361,8 @@ export class DeckGLMap {
       sizeUnits: 'pixels' as const,
       pickable: false,
       updateTriggers: {
-        getPosition: [selected],
-        getText: [selected],
+        getPosition: [selected, currentZoom],
+        getText: [selected, currentZoom],
       },
     });
   }
