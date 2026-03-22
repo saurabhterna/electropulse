@@ -3777,14 +3777,32 @@ export class DeckGLMap {
         acInfo.style.display = 'none';
       }
 
-      // Enable download button → links to ECI electoral roll download page
-      const eciCode = sMeta?.eciCode ?? '';
-      downloadBtn.href = `https://voters.eci.gov.in/download-eroll`;
+      // Enable download — construct direct ZIP download URL
+      // Pattern: voters.eci.gov.in/eroll/2026/{state_code_lower}/sir-finalroll/{ac_number}-eroll.zip
+      const eciCode = sMeta?.eciCode?.toLowerCase() ?? '';
+      const directZipUrl = `https://voters.eci.gov.in/eroll/2026/${eciCode}/sir-finalroll/${acNo}-eroll.zip`;
+      const fallbackUrl = `https://voters.eci.gov.in/download-eroll`;
+
+      downloadBtn.href = directZipUrl;
       downloadBtn.style.pointerEvents = 'auto';
       downloadBtn.style.opacity = '1';
       downloadBtn.style.background = sMeta?.color ?? '#888';
       downloadBtn.style.color = '#fff';
       downloadBtn.style.border = 'none';
+      downloadBtn.innerHTML = `📥 Download AC ${acNo} Electoral Roll (ZIP)`;
+
+      // Also add fallback link
+      const existingFallback = drawer.querySelector('#epFallbackLink');
+      if (!existingFallback) {
+        const fallbackEl = document.createElement('a');
+        fallbackEl.id = 'epFallbackLink';
+        fallbackEl.href = fallbackUrl;
+        fallbackEl.target = '_blank';
+        fallbackEl.rel = 'noopener';
+        fallbackEl.style.cssText = 'display:block;text-align:center;font-size:11px;opacity:0.4;margin-top:8px;color:#e0e0e0;text-decoration:underline;';
+        fallbackEl.textContent = 'If download fails, try ECI portal →';
+        downloadBtn.parentNode?.insertBefore(fallbackEl, downloadBtn.nextSibling);
+      }
     });
   }
 
