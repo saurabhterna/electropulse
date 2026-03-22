@@ -3555,7 +3555,6 @@ export class DeckGLMap {
     const initialMeta = stateName ? DeckGLMap.ELECTION_STATE_META[stateName] : null;
     const initialTitleCased = stateName ? stateName.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ') : '';
     const accentColor = initialMeta?.color ?? '#888';
-    const ECI_API = 'https://gateway-voters.eci.gov.in/api/v1';
 
     // State options for dropdown
     const stateOptions = Object.entries(DeckGLMap.ELECTION_STATE_META).map(([name, m]) => {
@@ -3703,39 +3702,29 @@ export class DeckGLMap {
       window.open('https://electoralsearch.eci.gov.in/', '_blank');
     });
 
-    // Cascading dropdowns: State → District → AC
+    // Cascading dropdowns: State → District → AC (using local GeoJSON data)
     const stateSelect = drawer.querySelector('#epStateSelect') as HTMLSelectElement;
     const districtSelect = drawer.querySelector('#epDistrictSelect') as HTMLSelectElement;
     const acSelect = drawer.querySelector('#epAcSelect') as HTMLSelectElement;
+    const searchIdx = this.electionSearchIndex;
 
-    const loadDistricts = (eciCode: string) => {
-      districtSelect.innerHTML = '<option value="">Loading districts...</option>';
-      districtSelect.disabled = true;
+    const loadDistricts = (selectedState: string) => {
+      const districts = [...new Set(searchIdx.filter(c => c.stateName === selectedState).map(c => c.distName))].filter(Boolean).sort();
+      districtSelect.innerHTML = '<option value="">Select district</option>' +
+        districts.map(d => {
+          const tc = d.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+          return `<option value="${d}">${this.escapeStr(tc)}</option>`;
+        }).join('');
+      districtSelect.disabled = false;
       acSelect.innerHTML = '<option value="">Select district first</option>';
       acSelect.disabled = true;
-
-      fetch(`${ECI_API}/common/districts/${eciCode}`, {
-        headers: { 'Content-Type': 'application/json' }
-      })
-        .then(r => r.json())
-        .then((districts: { districtName: string; districtNumber: string }[]) => {
-          if (!Array.isArray(districts)) throw new Error('Invalid response');
-          districtSelect.innerHTML = '<option value="">Select district</option>' +
-            districts.map(d => `<option value="${d.districtNumber}">${this.escapeStr(d.districtName)}</option>`).join('');
-          districtSelect.disabled = false;
-        })
-        .catch(() => {
-          districtSelect.innerHTML = '<option value="">Could not load districts</option>';
-          districtSelect.disabled = false;
-        });
     };
 
     // State change → load districts
     stateSelect.addEventListener('change', () => {
       const selectedState = stateSelect.value;
-      const sMeta = selectedState ? DeckGLMap.ELECTION_STATE_META[selectedState] : null;
-      if (sMeta) {
-        loadDistricts(sMeta.eciCode);
+      if (selectedState) {
+        loadDistricts(selectedState);
       } else {
         districtSelect.innerHTML = '<option value="">Select state first</option>';
         districtSelect.disabled = true;
@@ -3745,36 +3734,26 @@ export class DeckGLMap {
     });
 
     // If state was pre-selected, load districts immediately
-    if (stateName && initialMeta) {
-      loadDistricts(initialMeta.eciCode);
+    if (stateName) {
+      loadDistricts(stateName);
     }
 
     // District change → load ACs
     districtSelect.addEventListener('change', () => {
       const selectedState = stateSelect.value;
-      const sMeta = selectedState ? DeckGLMap.ELECTION_STATE_META[selectedState] : null;
-      const distNum = districtSelect.value;
-      if (!distNum || !sMeta) {
+      const distName = districtSelect.value;
+      if (!distName || !selectedState) {
         acSelect.innerHTML = '<option value="">Select district first</option>';
         acSelect.disabled = true;
         return;
       }
-      acSelect.innerHTML = '<option value="">Loading...</option>';
-      acSelect.disabled = true;
-
-      fetch(`${ECI_API}/common/acs/${sMeta.eciCode}${distNum.padStart(2, '0')}`, {
-        headers: { 'Content-Type': 'application/json' }
-      })
-        .then(r => r.json())
-        .then((acs: { acName: string; acNumber: string }[]) => {
-          if (!Array.isArray(acs)) throw new Error('Invalid response');
-          acSelect.innerHTML = '<option value="">Select constituency</option>' +
-            acs.map(a => `<option value="${a.acNumber}">${this.escapeStr(a.acName)} (${a.acNumber})</option>`).join('');
-          acSelect.disabled = false;
-        })
-        .catch(() => {
-          acSelect.innerHTML = '<option value="">Could not load constituencies</option>';
-        });
+      const acs = searchIdx.filter(c => c.stateName === selectedState && c.distName === distName).sort((a, b) => a.acNo - b.acNo);
+      acSelect.innerHTML = '<option value="">Select constituency</option>' +
+        acs.map(a => {
+          const tc = a.acName.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+          return `<option value="${a.acNo}">${this.escapeStr(tc)} (${a.acNo})</option>`;
+        }).join('');
+      acSelect.disabled = false;
     });
   }
 
