@@ -342,6 +342,12 @@ export class SearchModal {
       return;
     }
 
+    // ElectroPulse: Always show election tips instead of recent searches
+    if (SITE_VARIANT === 'election') {
+      this.renderEmpty();
+      return;
+    }
+
     if (this.recentSearches.length > 0) {
       this.renderRecent();
     } else {
@@ -612,7 +618,7 @@ export class SearchModal {
             <div class="search-result-title">${this.highlightMatch(result.title)}</div>
             ${result.subtitle ? `<div class="search-result-subtitle">${escapeHtml(result.subtitle)}</div>` : ''}
           </div>
-          <span class="search-result-type">${escapeHtml(t(`modals.search.types.${result.type}`) || result.type)}</span>
+          <span class="search-result-type">${escapeHtml(({ constituency: 'Constituency' } as Record<string, string>)[result.type] || t(`modals.search.types.${result.type}`) || result.type)}</span>
         </div>`;
       globalIndex++;
     }
