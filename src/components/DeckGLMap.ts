@@ -3306,6 +3306,9 @@ export class DeckGLMap {
   private createElectionLabelsLayer(): TextLayer | null {
     const selected = this.selectedElectionState;
     if (!selected || this.electionSearchIndex.length === 0) return null;
+    // Only show labels when zoomed in enough (avoid clutter at state overview)
+    const currentZoom = this.maplibreMap?.getZoom() ?? 0;
+    if (currentZoom < 7.5) return null;
 
     const labels = this.electionSearchIndex
       .filter(c => c.stateName === selected)
