@@ -111,7 +111,7 @@ import { getCountriesGeoJson, getCountryAtCoordinates, getCountryBbox } from '@/
 import type { FeatureCollection, Geometry } from 'geojson';
 
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
-import { getPartyColor, getPartyRGBA } from '@/config/election-parties';
+import { getPartyColor } from '@/config/election-parties';
 import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { fetchWebcamImage } from '@/services/webcams';
@@ -526,7 +526,7 @@ export class DeckGLMap {
         // Load constituency-level 2021 results
         fetch('/data/constituency-results-2021.json')
           .then(r => r.json())
-          .then(data => { this.constituencyResults2021 = data?.states ?? null; this.render(); })
+          .then(data => { this.constituencyResults2021 = data?.states ?? null; })
           .catch(err => console.warn('[ElectroPulse] Failed to load constituency results:', err));
       }
 
@@ -3249,7 +3249,9 @@ export class DeckGLMap {
     const colors = DeckGLMap.ELECTION_STATE_COLORS;
     const selected = this.selectedElectionState;
     const selectedAc = this.selectedElectionAcNo;
-    const cResults = this.constituencyResults2021;
+    // Party coloring: enable on May 4 after results are declared
+    // const cResults = this.constituencyResults2021;
+    // const showPartyColors = true;
     return new GeoJsonLayer({
       id: 'election-constituencies-layer',
       data: this.electionGeoJsonData,
@@ -3265,15 +3267,7 @@ export class DeckGLMap {
           return [255, 255, 255, 220] as [number, number, number, number];
         }
         if (selected && st !== selected) return [base[0], base[1], base[2], 30] as [number, number, number, number];
-        // When zoomed into a state, color by winning party
-        if (selected && st === selected && cResults && acNo) {
-          const cData = cResults[st]?.[String(acNo)];
-          if (cData?.party) {
-            const rgba = getPartyRGBA(cData.party);
-            return [rgba[0], rgba[1], rgba[2], 200] as [number, number, number, number];
-          }
-          return [base[0], base[1], base[2], 200] as [number, number, number, number];
-        }
+        if (selected && st === selected) return [base[0], base[1], base[2], 200] as [number, number, number, number];
         return base;
       },
       getLineColor: (f: { properties?: Record<string, unknown> }) => {
@@ -3299,7 +3293,7 @@ export class DeckGLMap {
       autoHighlight: true,
       highlightColor: [255, 255, 255, 60] as [number, number, number, number],
       updateTriggers: {
-        getFillColor: [this.electionGeoJsonData, selected, selectedAc, cResults],
+        getFillColor: [this.electionGeoJsonData, selected, selectedAc],
         getLineColor: [selected, selectedAc, isLight],
         getLineWidth: [selected, selectedAc],
       },
