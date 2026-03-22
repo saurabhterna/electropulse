@@ -508,6 +508,7 @@ export class DeckGLMap {
           .then((data: GeoJSON.FeatureCollection) => {
             this.electionGeoJsonData = data;
             this.render();
+            this.createElectionSearchBar();
             // Center on India after data loads
             if (this.maplibreMap) {
               this.maplibreMap.flyTo({ center: [82, 22], zoom: 4.2, duration: 1200 });
@@ -3584,6 +3585,193 @@ export class DeckGLMap {
       backdrop.style.opacity = '0';
       setTimeout(() => backdrop.remove(), 300);
     }
+  }
+
+  // ElectroPulse: Constituency search bar
+  private electionSearchIndex: { acNo: number; acName: string; acNameLower: string; distName: string; stateName: string; centroid: [number, number] }[] = [];
+
+  private createElectionSearchBar(): void {
+    if (!this.electionGeoJsonData) return;
+
+    // Build search index with centroids
+    this.electionSearchIndex = this.electionGeoJsonData.features.map(f => {
+      const props = f.properties ?? {};
+      // Compute centroid from geometry
+      let sumLon = 0, sumLat = 0, count = 0;
+      const geom = f.geometry as { type: string; coordinates: unknown };
+      const processCoords = (coords: number[][]) => { for (const c of coords) { sumLon += c[0]; sumLat += c[1]; count++; } };
+      if (geom.type === 'Polygon') { processCoords((geom.coordinates as number[][][])[0]); }
+      else if (geom.type === 'MultiPolygon') { for (const poly of (geom.coordinates as number[][][][])) processCoords(poly[0]); }
+      return {
+        acNo: props.AC_NO as number,
+        acName: props.AC_NAME as string,
+        acNameLower: (props.AC_NAME as string || '').toLowerCase(),
+        distName: props.DIST_NAME as string,
+        stateName: props.ST_NAME as string,
+        centroid: count > 0 ? [sumLon / count, sumLat / count] as [number, number] : [82, 22] as [number, number],
+      };
+    }).sort((a, b) => a.acNameLower.localeCompare(b.acNameLower));
+
+    // Create search bar container
+    const wrapper = this.container.querySelector('.deckgl-map-wrapper') || this.container;
+    const existing = wrapper.querySelector('#ep-search-bar');
+    if (existing) existing.remove();
+
+    const bar = document.createElement('div');
+    bar.id = 'ep-search-bar';
+    bar.style.cssText = `
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 90;
+      width: 320px; max-width: calc(100% - 500px);
+    `;
+    bar.innerHTML = `
+      <div style="position:relative;">
+        <input id="epSearchInput" type="text" placeholder="Search 824 constituencies..."
+          autocomplete="off" spellcheck="false"
+          style="width:100%;padding:10px 14px 10px 36px;border:1px solid rgba(255,255,255,0.12);
+          border-radius:10px;background:rgba(10,15,10,0.88);backdrop-filter:blur(8px);
+          color:#e0e0e0;font-size:13px;font-family:inherit;outline:none;
+          transition:border-color 0.2s,box-shadow 0.2s;" />
+        <svg style="position:absolute;left:11px;top:11px;opacity:0.4;pointer-events:none;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <div id="epSearchResults" style="position:absolute;top:calc(100% + 4px);left:0;right:0;
+          background:rgba(10,15,10,0.95);backdrop-filter:blur(10px);
+          border:1px solid rgba(255,255,255,0.1);border-radius:10px;
+          max-height:320px;overflow-y:auto;display:none;
+          scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;
+          box-shadow:0 8px 32px rgba(0,0,0,0.4);"></div>
+      </div>
+    `;
+    wrapper.appendChild(bar);
+
+    const input = bar.querySelector('#epSearchInput') as HTMLInputElement;
+    const results = bar.querySelector('#epSearchResults') as HTMLElement;
+
+    input.addEventListener('focus', () => {
+      input.style.borderColor = 'rgba(255,255,255,0.3)';
+      input.style.boxShadow = '0 0 0 2px rgba(255,255,255,0.05)';
+    });
+    input.addEventListener('blur', () => {
+      input.style.borderColor = 'rgba(255,255,255,0.12)';
+      input.style.boxShadow = 'none';
+      // Delay hide to allow click on results
+      setTimeout(() => { results.style.display = 'none'; }, 200);
+    });
+
+    let selectedIdx = -1;
+
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase();
+      selectedIdx = -1;
+      if (q.length < 2) { results.style.display = 'none'; return; }
+
+      // Search: match start of name, then contains, then district
+      const isNum = /^\d+$/.test(q);
+      const matches = this.electionSearchIndex.filter(c => {
+        if (isNum) return String(c.acNo) === q || String(c.acNo).startsWith(q);
+        return c.acNameLower.includes(q) || (c.distName || '').toLowerCase().includes(q);
+      }).slice(0, 12);
+
+      // Sort: starts-with first, then contains
+      matches.sort((a, b) => {
+        const aStarts = a.acNameLower.startsWith(q) ? 0 : 1;
+        const bStarts = b.acNameLower.startsWith(q) ? 0 : 1;
+        if (aStarts !== bStarts) return aStarts - bStarts;
+        return a.acNameLower.localeCompare(b.acNameLower);
+      });
+
+      if (matches.length === 0) {
+        results.innerHTML = '<div style="padding:12px 14px;font-size:12px;opacity:0.4;text-align:center;">No constituencies found</div>';
+        results.style.display = 'block';
+        return;
+      }
+
+      const stateColors: Record<string, string> = {};
+      for (const [s, m] of Object.entries(DeckGLMap.ELECTION_STATE_META)) stateColors[s] = m.color;
+
+      results.innerHTML = matches.map((c, i) => {
+        const titleCased = c.acName.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+        const stateTitleCased = c.stateName.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+        const stateColor = stateColors[c.stateName] || '#888';
+        // Get 2021 winner party
+        const cResult = this.constituencyResults2021?.[c.stateName]?.[String(c.acNo)];
+        const winnerParty = cResult?.party ?? '';
+        const winnerColor = winnerParty ? getPartyColor(winnerParty) : 'transparent';
+        return `<div class="ep-search-result" data-idx="${i}" style="
+          padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;
+          border-bottom:1px solid rgba(255,255,255,0.05);transition:background 0.15s;
+        " onmouseenter="this.style.background='rgba(255,255,255,0.08)'" onmouseleave="this.style.background='transparent'">
+          <div style="min-width:30px;text-align:center;font-size:11px;font-weight:700;color:${stateColor};opacity:0.7;">${c.acNo}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeStr(titleCased)}</div>
+            <div style="font-size:11px;opacity:0.4;margin-top:1px;">${this.escapeStr(c.distName)} · ${this.escapeStr(stateTitleCased)}</div>
+          </div>
+          ${winnerParty ? `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+            <div style="width:8px;height:8px;border-radius:2px;background:${winnerColor};"></div>
+            <span style="font-size:10px;opacity:0.5;">${this.escapeStr(winnerParty)}</span>
+          </div>` : ''}
+        </div>`;
+      }).join('');
+      results.style.display = 'block';
+
+      // Click handler for results
+      results.querySelectorAll('.ep-search-result').forEach((el, i) => {
+        el.addEventListener('mousedown', (e) => {
+          e.preventDefault(); // prevent blur
+          const match = matches[i];
+          this.zoomToConstituency(match);
+          input.value = '';
+          results.style.display = 'none';
+          input.blur();
+        });
+      });
+    });
+
+    // Keyboard navigation
+    input.addEventListener('keydown', (e) => {
+      const items = results.querySelectorAll('.ep-search-result');
+      if (items.length === 0) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedIdx = Math.min(selectedIdx + 1, items.length - 1);
+        items.forEach((el, i) => (el as HTMLElement).style.background = i === selectedIdx ? 'rgba(255,255,255,0.08)' : 'transparent');
+        items[selectedIdx]?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedIdx = Math.max(selectedIdx - 1, 0);
+        items.forEach((el, i) => (el as HTMLElement).style.background = i === selectedIdx ? 'rgba(255,255,255,0.08)' : 'transparent');
+        items[selectedIdx]?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter' && selectedIdx >= 0) {
+        e.preventDefault();
+        (items[selectedIdx] as HTMLElement).dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      } else if (e.key === 'Escape') {
+        input.value = '';
+        results.style.display = 'none';
+        input.blur();
+      }
+    });
+
+    // Global keyboard shortcut: / to focus search
+    document.addEventListener('keydown', (e) => {
+      if (SITE_VARIANT !== 'election') return;
+      if (e.key === '/' && document.activeElement !== input && !(document.activeElement instanceof HTMLInputElement)) {
+        e.preventDefault();
+        input.focus();
+      }
+    });
+  }
+
+  private zoomToConstituency(c: { acNo: number; acName: string; distName: string; stateName: string; centroid: [number, number] }): void {
+    // First ensure the state is selected
+    if (this.selectedElectionState !== c.stateName) {
+      this.selectElectionState(c.stateName);
+    }
+    // Zoom to constituency centroid
+    if (this.maplibreMap) {
+      this.maplibreMap.flyTo({ center: c.centroid, zoom: 9.5, duration: 1000 });
+    }
+    // Open constituency detail drawer after a short delay
+    setTimeout(() => {
+      this.showConstituencyDetail(c.stateName, c.acNo, c.acName, c.distName);
+    }, 400);
   }
 
   private escapeStr(s: string): string {
