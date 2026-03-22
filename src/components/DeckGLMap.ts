@@ -3612,8 +3612,9 @@ export class DeckGLMap {
           <div style="flex:1;height:1px;background:rgba(255,255,255,0.08);"></div>
         </div>
 
-        <!-- Method 2: Search by Details -->
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.4;margin-bottom:10px;font-weight:500;">Search by Details</div>
+        <!-- Method 2: Download Electoral Roll for your constituency -->
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.4;margin-bottom:10px;font-weight:500;">Download Electoral Roll</div>
+        <div style="font-size:12px;opacity:0.5;margin-bottom:12px;">Find your name in the PDF voter list for your constituency</div>
 
         <div style="margin-bottom:10px;">
           <label style="font-size:11px;opacity:0.5;display:block;margin-bottom:4px;">State</label>
@@ -3625,8 +3626,8 @@ export class DeckGLMap {
 
         <div style="margin-bottom:10px;">
           <label style="font-size:11px;opacity:0.5;display:block;margin-bottom:4px;">District</label>
-          <select id="epDistrictSelect" style="${selectStyle}">
-            <option value="">Loading districts...</option>
+          <select id="epDistrictSelect" style="${selectStyle}" disabled>
+            <option value="">Select state first</option>
           </select>
         </div>
 
@@ -3637,28 +3638,24 @@ export class DeckGLMap {
           </select>
         </div>
 
-        <div style="margin-bottom:10px;">
-          <label style="font-size:11px;opacity:0.5;display:block;margin-bottom:4px;">Your Name</label>
-          <input id="epNameInput" type="text" placeholder="Full name as on voter ID"
-            style="width:100%;padding:10px 12px;border:1px solid rgba(255,255,255,0.12);border-radius:8px;background:rgba(255,255,255,0.06);color:#e0e0e0;font-size:13px;font-family:inherit;outline:none;" />
-        </div>
+        <div id="epAcInfo" style="display:none;background:rgba(255,255,255,0.04);border-radius:8px;padding:12px;margin-bottom:12px;"></div>
 
-        <button id="epSearchDetailsBtn" style="${btnStyle}background:rgba(255,255,255,0.1);color:#e0e0e0;border:1px solid rgba(255,255,255,0.15);">
-          🔍 Search on ECI Portal
-        </button>
+        <a id="epDownloadRollBtn" href="#" target="_blank" rel="noopener" style="${btnStyle}background:rgba(255,255,255,0.1);color:#e0e0e0;border:1px solid rgba(255,255,255,0.15);text-decoration:none;pointer-events:none;opacity:0.4;">
+          📥 Download Electoral Roll
+        </a>
 
         <div style="height:1px;background:rgba(255,255,255,0.08);margin:18px 0;"></div>
 
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.4;margin-bottom:10px;font-weight:500;">Quick Links</div>
         <div style="display:flex;flex-direction:column;gap:8px;">
           <a href="https://electoralsearch.eci.gov.in/" target="_blank" rel="noopener" style="padding:10px 12px;border:1px solid rgba(255,255,255,0.08);border-radius:8px;background:rgba(255,255,255,0.03);color:#e0e0e0;text-decoration:none;font-size:12px;display:flex;align-items:center;gap:8px;transition:background 0.2s;" onmouseenter="this.style.background='rgba(255,255,255,0.06)'" onmouseleave="this.style.background='rgba(255,255,255,0.03)'">
-            <span>🌐</span> ECI Electoral Search Portal
+            <span>🔍</span> Search by Name on ECI
           </a>
           <a href="https://voters.eci.gov.in/" target="_blank" rel="noopener" style="padding:10px 12px;border:1px solid rgba(255,255,255,0.08);border-radius:8px;background:rgba(255,255,255,0.03);color:#e0e0e0;text-decoration:none;font-size:12px;display:flex;align-items:center;gap:8px;transition:background 0.2s;" onmouseenter="this.style.background='rgba(255,255,255,0.06)'" onmouseleave="this.style.background='rgba(255,255,255,0.03)'">
             <span>📋</span> Voters' Services Portal
           </a>
           <a href="https://voters.eci.gov.in/download-eroll" target="_blank" rel="noopener" style="padding:10px 12px;border:1px solid rgba(255,255,255,0.08);border-radius:8px;background:rgba(255,255,255,0.03);color:#e0e0e0;text-decoration:none;font-size:12px;display:flex;align-items:center;gap:8px;transition:background 0.2s;" onmouseenter="this.style.background='rgba(255,255,255,0.06)'" onmouseleave="this.style.background='rgba(255,255,255,0.03)'">
-            <span>📥</span> Download Electoral Roll PDF
+            <span>📥</span> Download Full Electoral Roll
           </a>
         </div>
 
@@ -3687,18 +3684,8 @@ export class DeckGLMap {
     // Close button
     drawer.querySelector('#epCloseVoterSearch')?.addEventListener('click', () => this.hideVoterSearchPanel());
 
-    // EPIC search button — open ECI with epic pre-filled
+    // EPIC search button — open ECI portal
     drawer.querySelector('#epSearchEpicBtn')?.addEventListener('click', () => {
-      const epic = (drawer.querySelector('#epEpicInput') as HTMLInputElement)?.value.trim().toUpperCase();
-      if (epic) {
-        window.open(`https://electoralsearch.eci.gov.in/`, '_blank');
-      } else {
-        window.open('https://electoralsearch.eci.gov.in/', '_blank');
-      }
-    });
-
-    // Details search button — open ECI portal
-    drawer.querySelector('#epSearchDetailsBtn')?.addEventListener('click', () => {
       window.open('https://electoralsearch.eci.gov.in/', '_blank');
     });
 
@@ -3706,7 +3693,10 @@ export class DeckGLMap {
     const stateSelect = drawer.querySelector('#epStateSelect') as HTMLSelectElement;
     const districtSelect = drawer.querySelector('#epDistrictSelect') as HTMLSelectElement;
     const acSelect = drawer.querySelector('#epAcSelect') as HTMLSelectElement;
+    const acInfo = drawer.querySelector('#epAcInfo') as HTMLElement;
+    const downloadBtn = drawer.querySelector('#epDownloadRollBtn') as HTMLAnchorElement;
     const searchIdx = this.electionSearchIndex;
+    const cResults = this.constituencyResults2021;
 
     const loadDistricts = (selectedState: string) => {
       const districts = [...new Set(searchIdx.filter(c => c.stateName === selectedState).map(c => c.distName))].filter(Boolean).sort();
@@ -3754,6 +3744,47 @@ export class DeckGLMap {
           return `<option value="${a.acNo}">${this.escapeStr(tc)} (${a.acNo})</option>`;
         }).join('');
       acSelect.disabled = false;
+    });
+
+    // AC change → show constituency info + enable download
+    acSelect.addEventListener('change', () => {
+      const selectedState = stateSelect.value;
+      const acNo = acSelect.value;
+      if (!acNo || !selectedState) {
+        acInfo.style.display = 'none';
+        downloadBtn.style.pointerEvents = 'none';
+        downloadBtn.style.opacity = '0.4';
+        return;
+      }
+
+      // Show 2021 result info
+      const cData = cResults?.[selectedState]?.[acNo];
+      const sMeta = DeckGLMap.ELECTION_STATE_META[selectedState];
+      if (cData) {
+        const winnerColor = getPartyColor(cData.party);
+        acInfo.innerHTML = `
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin-bottom:6px;">2021 Result</div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:4px;height:28px;border-radius:2px;background:${winnerColor};"></div>
+            <div>
+              <div style="font-size:13px;font-weight:500;">${this.escapeStr(cData.winner)}</div>
+              <div style="font-size:11px;color:${winnerColor};">${this.escapeStr(cData.party)} · Margin: ${cData.margin?.toLocaleString() ?? '—'}</div>
+            </div>
+          </div>
+        `;
+        acInfo.style.display = 'block';
+      } else {
+        acInfo.style.display = 'none';
+      }
+
+      // Enable download button → links to ECI electoral roll download page
+      const eciCode = sMeta?.eciCode ?? '';
+      downloadBtn.href = `https://voters.eci.gov.in/download-eroll`;
+      downloadBtn.style.pointerEvents = 'auto';
+      downloadBtn.style.opacity = '1';
+      downloadBtn.style.background = sMeta?.color ?? '#888';
+      downloadBtn.style.color = '#fff';
+      downloadBtn.style.border = 'none';
     });
   }
 
