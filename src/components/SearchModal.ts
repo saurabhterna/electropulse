@@ -3,6 +3,7 @@ import { t } from '@/services/i18n';
 import { trackSearchUsed } from '@/services/analytics';
 import { getAllCommands, type Command } from '@/config/commands';
 import { isMobileDevice } from '@/utils';
+import { SITE_VARIANT } from '@/config/variant';
 
 interface CommandResult {
   command: Command;
@@ -245,6 +246,8 @@ export class SearchModal {
 
   private matchCommands(query: string): CommandResult[] {
     if (query.length < 2) return [];
+    // ElectroPulse: Skip worldmonitor commands for election variant
+    if (SITE_VARIANT === 'election') return [];
     const matched: CommandResult[] = [];
     for (const cmd of getAllCommands()) {
       if (cmd.id.startsWith('panel:') && this.activePanelIds.size > 0) {
@@ -307,6 +310,7 @@ export class SearchModal {
     }
 
     const priority: SearchResultType[] = [
+      'constituency',
       'news', 'prediction', 'market', 'earthquake', 'outage',
       'conflict', 'hotspot', 'country',
       'base', 'pipeline', 'cable', 'datacenter', 'nuclear', 'irradiator',
@@ -318,7 +322,7 @@ export class SearchModal {
     for (const type of priority) {
       const matches = byType.get(type) || [];
       matches.sort((a, b) => b._score - a._score);
-      const limit = this.isMobile ? 2 : (type === 'news' ? 6 : type === 'country' ? 4 : 3);
+      const limit = this.isMobile ? 2 : (type === 'news' ? 6 : type === 'constituency' ? 10 : type === 'country' ? 4 : 3);
       this.results.push(...matches.slice(0, limit));
       if (this.results.length >= maxResults) break;
     }
@@ -380,6 +384,35 @@ export class SearchModal {
   private renderEmpty(): void {
     if (!this.resultsList) return;
 
+    // ElectroPulse: Election-specific tips
+    if (SITE_VARIANT === 'election') {
+      this.resultsList.innerHTML = `
+        <div class="search-section-header">SEARCH CONSTITUENCIES</div>
+        <div class="search-result-item tip-item selected" data-tip-example="Nandigram">
+          <span class="search-result-icon">\u{1F5F3}\uFE0F</span>
+          <div class="search-result-content"><div class="search-result-title">Type a constituency name</div></div>
+          <kbd class="search-tip-example">Nandigram</kbd>
+        </div>
+        <div class="search-result-item tip-item" data-tip-example="210">
+          <span class="search-result-icon">\u{1F522}</span>
+          <div class="search-result-content"><div class="search-result-title">Search by AC number</div></div>
+          <kbd class="search-tip-example">210</kbd>
+        </div>
+        <div class="search-result-item tip-item" data-tip-example="Kolkata">
+          <span class="search-result-icon">\u{1F3D8}\uFE0F</span>
+          <div class="search-result-content"><div class="search-result-title">Search by district</div></div>
+          <kbd class="search-tip-example">Kolkata</kbd>
+        </div>
+      `;
+      this.resultsList.querySelectorAll('.tip-item').forEach((el) => {
+        el.addEventListener('click', () => {
+          const example = (el as HTMLElement).dataset.tipExample || '';
+          if (this.input) { this.input.value = example; this.handleSearch(); }
+        });
+      });
+      return;
+    }
+
     const tips: { icon: string; key: string; exampleKey: string }[] = [
       { icon: '\u{1F30D}', key: 'commands.tips.map', exampleKey: 'commands.tips.mapExample' },
       { icon: '\u{1F4CB}', key: 'commands.tips.panel', exampleKey: 'commands.tips.panelExample' },
@@ -421,6 +454,7 @@ export class SearchModal {
 
   private appendSeeAllCommandsLink(): void {
     if (!this.resultsList) return;
+    if (SITE_VARIANT === 'election') return;
     const link = document.createElement('a');
     link.href = '#';
     link.className = 'search-all-commands-link';

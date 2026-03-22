@@ -4167,10 +4167,21 @@ export class DeckGLMap {
       const stateName = props?.ST_NAME as string | undefined;
       if (stateName) {
         if (this.selectedElectionState === stateName) {
-          // Already in this state — show constituency detail
+          // Already in this state — zoom to constituency + show detail
           const acNo = props?.AC_NO as number;
           const acName = props?.AC_NAME as string;
           const distName = props?.DIST_NAME as string;
+          // Compute centroid from clicked feature for flyTo
+          const geom = (info.object as { geometry?: { type: string; coordinates: unknown } })?.geometry;
+          if (geom && this.maplibreMap) {
+            let sumLon = 0, sumLat = 0, count = 0;
+            const processCoords = (coords: number[][]) => { for (const c of coords) { sumLon += c[0]; sumLat += c[1]; count++; } };
+            if (geom.type === 'Polygon') processCoords((geom.coordinates as number[][][])[0]);
+            else if (geom.type === 'MultiPolygon') for (const poly of (geom.coordinates as number[][][][])) processCoords(poly[0]);
+            if (count > 0) {
+              this.maplibreMap.flyTo({ center: [sumLon / count, sumLat / count], zoom: 9.5, duration: 800 });
+            }
+          }
           this.showConstituencyDetail(stateName, acNo, acName, distName);
         } else {
           // Zoom to state
