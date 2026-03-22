@@ -216,6 +216,7 @@ export class PanelLayoutManager implements AppModule {
             </button>
             <div class="download-dropdown" id="downloadDropdown"></div>
           </div>`}
+          ${SITE_VARIANT === 'election' ? '<button class="voter-search-btn" id="voterSearchHeaderBtn" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#e0e0e0;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit;display:flex;align-items:center;gap:6px;white-space:nowrap;transition:background 0.2s;" onmouseenter="this.style.background=\'rgba(255,255,255,0.15)\'" onmouseleave="this.style.background=\'rgba(255,255,255,0.08)\'"><span style="font-size:14px;">🗳️</span> Voter Search</button>' : ''}
           <button class="search-btn" id="searchBtn"><kbd>⌘K</kbd> ${t('header.search')}</button>
           ${this.ctx.isDesktopApp ? '' : `<button class="copy-link-btn" id="copyLinkBtn">${t('header.copyLink')}</button>`}
           ${this.ctx.isDesktopApp ? '' : `<button class="fullscreen-btn" id="fullscreenBtn" title="${t('header.fullscreen')}">⛶</button>`}

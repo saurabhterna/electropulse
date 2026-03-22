@@ -806,6 +806,12 @@ export class MapContainer {
     }
   }
 
+  public openVoterSearch(): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.openVoterSearch();
+    }
+  }
+
   public triggerConflictClick(id: string): void {
     if (this.useDeckGL) {
       this.deckGLMap?.triggerConflictClick(id);

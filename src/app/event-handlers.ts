@@ -283,6 +283,11 @@ export class EventHandlerManager implements AppModule {
     document.getElementById('mobileSearchBtn')?.addEventListener('click', openSearch);
     document.getElementById('searchMobileFab')?.addEventListener('click', openSearch);
 
+    // ElectroPulse: Voter Search header button
+    document.getElementById('voterSearchHeaderBtn')?.addEventListener('click', () => {
+      this.ctx.map?.openVoterSearch();
+    });
+
     document.getElementById('copyLinkBtn')?.addEventListener('click', async () => {
       const shareUrl = this.getShareUrl();
       if (!shareUrl) return;
