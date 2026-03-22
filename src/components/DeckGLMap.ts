@@ -3313,6 +3313,7 @@ export class DeckGLMap {
     const bounds = this.maplibreMap?.getBounds();
     const sw = bounds?.getSouthWest();
     const ne = bounds?.getNorthEast();
+    const selectedAc = this.selectedElectionAcNo;
 
     const labels = this.electionSearchIndex
       .filter(c => {
@@ -3327,13 +3328,21 @@ export class DeckGLMap {
         position: c.centroid as [number, number],
         text: c.acName.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' '),
         acNo: c.acNo,
+        isSelected: c.acNo === selectedAc,
       }));
 
     // Collision detection: skip labels whose centroids are too close
-    const minDist = Math.pow(2, 10 - currentZoom) * 0.12;
+    // At zoom 8→~0.06°, zoom 9→~0.03°, zoom 10→~0.015°
+    const minDist = Math.pow(2, 9 - currentZoom) * 0.03;
     const minDistSq = minDist * minDist;
     const visible: typeof labels = [];
+
+    // Always include selected constituency first
+    const selectedLabel = labels.find(l => l.isSelected);
+    if (selectedLabel) visible.push(selectedLabel);
+
     for (const label of labels) {
+      if (label.isSelected) continue;
       let tooClose = false;
       for (const existing of visible) {
         const dx = label.position[0] - existing.position[0];
@@ -3348,14 +3357,14 @@ export class DeckGLMap {
       data: visible,
       getPosition: (d: (typeof visible)[0]) => d.position,
       getText: (d: (typeof visible)[0]) => d.text,
-      getSize: 11,
-      getColor: [255, 255, 255, 220],
+      getSize: (d: (typeof visible)[0]) => d.isSelected ? 13 : 11,
+      getColor: (d: (typeof visible)[0]) => d.isSelected ? [255, 255, 255, 255] : [255, 255, 255, 200],
       getTextAnchor: 'middle',
       getAlignmentBaseline: 'center',
       fontFamily: 'system-ui, -apple-system, sans-serif',
       fontWeight: 600,
       background: true,
-      getBackgroundColor: [0, 0, 0, 160],
+      getBackgroundColor: (d: (typeof visible)[0]) => d.isSelected ? [40, 40, 40, 230] : [0, 0, 0, 140],
       backgroundPadding: [4, 2, 4, 2],
       billboard: true,
       sizeUnits: 'pixels' as const,
@@ -3363,6 +3372,9 @@ export class DeckGLMap {
       updateTriggers: {
         getPosition: [selected, currentZoom],
         getText: [selected, currentZoom],
+        getSize: [selectedAc],
+        getColor: [selectedAc],
+        getBackgroundColor: [selectedAc],
       },
     });
   }
