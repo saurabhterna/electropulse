@@ -357,6 +357,8 @@ export class DeckGLMap {
   private results2021: Record<string, any> | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private constituencyResults2021: Record<string, any> | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private candidates2026: Record<string, any> | null = null;
 
   private static readonly ELECTION_STATE_META: Record<string, {
     code: string; eciCode: string; seats: number; color: string; phase: string; date: string;
@@ -528,6 +530,12 @@ export class DeckGLMap {
           .then(r => r.json())
           .then(data => { this.constituencyResults2021 = data?.states ?? null; })
           .catch(err => console.warn('[ElectroPulse] Failed to load constituency results:', err));
+
+        // Load 2026 candidate data
+        fetch('/data/candidates-2026.json')
+          .then(r => r.json())
+          .then(data => { this.candidates2026 = data?.states ?? null; })
+          .catch(err => console.warn('[ElectroPulse] Failed to load 2026 candidates:', err));
       }
 
       this.render();
@@ -3836,6 +3844,9 @@ export class DeckGLMap {
     const winnerColor = winnerParty ? getPartyColor(winnerParty) : '#888';
     const runnerUpColor = runnerUpParty ? getPartyColor(runnerUpParty) : '#888';
 
+    // Look up 2026 candidates
+    const cand2026 = this.candidates2026?.[stateName]?.[String(acNo)];
+
     const titleCased = acName.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
     const stateTitleCased = stateName.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
 
@@ -3913,12 +3924,32 @@ export class DeckGLMap {
         <div style="height:1px;background:rgba(255,255,255,0.08);margin:16px 0;"></div>
 
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.4;margin-bottom:12px;font-weight:500;">2026 Election</div>
+        ${cand2026 ? `
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${[
+            { alliance: 'LDF', color: '#e71d36', data: cand2026.ldf },
+            { alliance: 'UDF', color: '#3b82f6', data: cand2026.udf },
+            { alliance: 'NDA', color: '#f97316', data: cand2026.nda },
+          ].filter(a => a.data?.candidate).map(a => {
+            const partyColor = getPartyColor(a.data.party);
+            return `<div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px 12px;border-left:3px solid ${a.color};">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <span style="font-size:10px;font-weight:600;color:${a.color};text-transform:uppercase;letter-spacing:0.5px;">${a.alliance}</span>
+                <span style="font-size:10px;color:${partyColor};opacity:0.8;">${this.escapeStr(a.data.party)}</span>
+              </div>
+              <div style="font-size:13px;font-weight:500;">${this.escapeStr(a.data.candidate)}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="text-align:center;margin-top:8px;font-size:11px;opacity:0.3;">${meta.phase} · ${meta.date} · Results: May 4, 2026</div>
+        ` : `
         <div style="background:linear-gradient(135deg, rgba(${parseInt(meta.color.slice(1,3),16)},${parseInt(meta.color.slice(3,5),16)},${parseInt(meta.color.slice(5,7),16)},0.15), rgba(255,255,255,0.03));border-radius:10px;padding:16px;text-align:center;border:1px solid rgba(${parseInt(meta.color.slice(1,3),16)},${parseInt(meta.color.slice(3,5),16)},${parseInt(meta.color.slice(5,7),16)},0.2);">
           <div style="font-size:14px;font-weight:600;color:${meta.color};">Upcoming</div>
           <div style="font-size:12px;opacity:0.5;margin-top:6px;">Candidates to be announced</div>
           <div style="font-size:11px;opacity:0.35;margin-top:4px;">${meta.phase} · ${meta.date}</div>
           <div style="font-size:11px;opacity:0.25;margin-top:4px;">Results: May 4, 2026</div>
         </div>
+        `}
 
         <div style="height:1px;background:rgba(255,255,255,0.08);margin:16px 0;"></div>
 
