@@ -1,4 +1,5 @@
 {
+  "ignoreCommand": "bash scripts/vercel-ignore.sh",
   "crons": [],
   "rewrites": [
     { "source": "/docs", "destination": "https://worldmonitor.mintlify.dev/docs" },
