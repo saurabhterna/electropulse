@@ -200,7 +200,17 @@ export const OPTIONAL_CHANNEL_REGIONS: { key: string; labelKey: string; channelI
   ..._REGION_ENTRIES,
 ];
 
-const DEFAULT_LIVE_CHANNELS = SITE_VARIANT === 'tech' ? TECH_LIVE_CHANNELS : SITE_VARIANT === 'happy' ? [] : FULL_LIVE_CHANNELS;
+// Election variant: Indian news channels for election coverage
+const ELECTION_LIVE_CHANNELS: LiveChannel[] = [
+  { id: 'ndtv', name: 'NDTV 24x7', handle: '@NDTV', fallbackVideoId: 'MN8p-Tn2vS0' },
+  { id: 'india-today', name: 'India Today', handle: '@IndiaToday', fallbackVideoId: 'Xmm3Kr5P1Uw' },
+  { id: 'republic', name: 'Republic TV', handle: '@republic', fallbackVideoId: 'NV9ElCl5HL0' },
+  { id: 'times-now', name: 'Times Now', handle: '@TimesNow', fallbackVideoId: '0k-5PT2zQcI' },
+  { id: 'wion', name: 'WION', handle: '@WIONews', fallbackVideoId: '-upyPouRrB8' },
+  { id: 'dd-news', name: 'DD News', handle: '@DDNewslive', fallbackVideoId: 'sF-eDLkXNYE', useFallbackOnly: true },
+];
+
+const DEFAULT_LIVE_CHANNELS = SITE_VARIANT === 'election' ? ELECTION_LIVE_CHANNELS : SITE_VARIANT === 'tech' ? TECH_LIVE_CHANNELS : SITE_VARIANT === 'happy' ? [] : FULL_LIVE_CHANNELS;
 
 /** Default channel list for the current variant (for restore in channel management). */
 export function getDefaultLiveChannels(): LiveChannel[] {

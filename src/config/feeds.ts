@@ -308,6 +308,40 @@ export const SOURCE_TIERS: Record<string, number> = {
   'GNN Health': 3,
   'GNN Heroes': 3,
   'GNN Earth': 3,
+
+  // India Election Sources
+  'NDTV Elections': 1,
+  'The Hindu Elections': 1,
+  'The Hindu Kerala': 2,
+  'The Hindu TN': 2,
+  'The Hindu Puducherry': 2,
+  'Indian Express Elections': 1,
+  'Times of India Elections': 2,
+  'Hindustan Times Elections': 2,
+  'Scroll Elections': 2,
+  'The Wire Elections': 2,
+  'Election Commission': 1,
+  'India Election Wire': 2,
+  'Kerala Elections': 2,
+  'Manorama Online': 2,
+  'Mathrubhumi': 2,
+  'Tamil Nadu Elections': 2,
+  'DT Next': 3,
+  'The New Indian Express TN': 2,
+  'West Bengal Elections': 2,
+  'Telegraph India': 2,
+  'Anandabazar': 2,
+  'Bengal Election Wire': 3,
+  'Assam Elections': 2,
+  'Northeast Now': 3,
+  'Sentinel Assam': 3,
+  'Assam Tribune': 3,
+  'Puducherry Elections': 2,
+  'CSDS-Lokniti': 2,
+  'Election Analysis': 3,
+  'Swarajya Politics': 3,
+  'Print Politics': 2,
+  'LiveMint Opinion': 2,
 };
 
 export function getSourceTier(sourceName: string): number {
@@ -1171,8 +1205,63 @@ const COMMODITY_FEEDS: Record<string, Feed[]> = {
   ],
 };
 
+// ============================================
+// ELECTION VARIANT (ElectroPulse - India 2026)
+// ============================================
+const ELECTION_FEEDS: Record<string, Feed[]> = {
+  elections: [
+    // Wire & national coverage
+    { name: 'NDTV Elections', url: rss('https://feeds.feedburner.com/ndtvnews-top-stories') },
+    { name: 'The Hindu Elections', url: rss('https://www.thehindu.com/elections/rss-elections.xml') },
+    { name: 'Indian Express Elections', url: rss('https://indianexpress.com/section/elections/feed/') },
+    { name: 'Times of India Elections', url: rss('https://timesofindia.indiatimes.com/rssfeeds/7765045.cms') },
+    { name: 'Hindustan Times Elections', url: rss('https://news.google.com/rss/search?q=site:hindustantimes.com+("assembly+elections"+OR+"election+2026"+OR+"election+results")+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'Scroll Elections', url: rss('https://news.google.com/rss/search?q=site:scroll.in+("assembly+elections"+OR+"election+2026")+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'The Wire Elections', url: rss('https://news.google.com/rss/search?q=site:thewire.in+("assembly+elections"+OR+"election+2026")+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'Election Commission', url: rss('https://news.google.com/rss/search?q=("Election+Commission+of+India"+OR+site:eci.gov.in)+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'India Election Wire', url: rss('https://news.google.com/rss/search?q=("2026+assembly+elections"+OR+"India+state+elections+2026"+OR+"counting+day")+when:2d&hl=en-IN&gl=IN&ceid=IN:en') },
+  ],
+  kerala: [
+    { name: 'Kerala Elections', url: rss('https://news.google.com/rss/search?q=("Kerala+election"+OR+"Kerala+assembly"+OR+"LDF"+OR+"UDF")+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'The Hindu Kerala', url: rss('https://www.thehindu.com/news/national/kerala/feeder/default.rss') },
+    { name: 'Manorama Online', url: rss('https://news.google.com/rss/search?q=site:english.manoramaonline.com+election+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'Mathrubhumi', url: rss('https://news.google.com/rss/search?q=site:english.mathrubhumi.com+election+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+  ],
+  tamilnadu: [
+    { name: 'Tamil Nadu Elections', url: rss('https://news.google.com/rss/search?q=("Tamil+Nadu+election"+OR+"TN+assembly"+OR+"DMK"+OR+"AIADMK")+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'The Hindu TN', url: rss('https://www.thehindu.com/news/national/tamil-nadu/feeder/default.rss') },
+    { name: 'DT Next', url: rss('https://news.google.com/rss/search?q=site:dtnext.in+election+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'The New Indian Express TN', url: rss('https://news.google.com/rss/search?q=site:newindianexpress.com+("Tamil+Nadu"+election)+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+  ],
+  westbengal: [
+    { name: 'West Bengal Elections', url: rss('https://news.google.com/rss/search?q=("West+Bengal+election"+OR+"Bengal+assembly"+OR+"TMC"+OR+"Trinamool")+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'Telegraph India', url: rss('https://news.google.com/rss/search?q=site:telegraphindia.com+election+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'Anandabazar', url: rss('https://news.google.com/rss/search?q=site:anandabazar.com+election+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'Bengal Election Wire', url: rss('https://news.google.com/rss/search?q=("Bengal+polls"+OR+"Mamata+Banerjee"+OR+"BJP+Bengal")+election+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+  ],
+  assam: [
+    { name: 'Assam Elections', url: rss('https://news.google.com/rss/search?q=("Assam+election"+OR+"Assam+assembly"+OR+"AGP"+OR+"Himanta")+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'Northeast Now', url: rss('https://news.google.com/rss/search?q=site:nenow.in+election+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'Sentinel Assam', url: rss('https://news.google.com/rss/search?q=site:sentinelassam.com+election+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'Assam Tribune', url: rss('https://news.google.com/rss/search?q=site:assamtribune.com+election+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+  ],
+  puducherry: [
+    { name: 'Puducherry Elections', url: rss('https://news.google.com/rss/search?q=("Puducherry+election"+OR+"Pondicherry+election"+OR+"Puducherry+assembly")+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'The Hindu Puducherry', url: rss('https://news.google.com/rss/search?q=site:thehindu.com+Puducherry+election+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+  ],
+  analysis: [
+    { name: 'CSDS-Lokniti', url: rss('https://news.google.com/rss/search?q=(Lokniti+OR+CSDS+OR+"Centre+for+Study+of+Developing+Societies")+election+when:7d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'Election Analysis', url: rss('https://news.google.com/rss/search?q=("exit+poll"+OR+"opinion+poll"+OR+"election+analysis"+OR+"seat+prediction")+India+2026+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'Swarajya Politics', url: rss('https://news.google.com/rss/search?q=site:swarajyamag.com+election+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'Print Politics', url: rss('https://news.google.com/rss/search?q=site:theprint.in+("assembly+elections"+OR+"election+2026")+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'LiveMint Opinion', url: rss('https://news.google.com/rss/search?q=site:livemint.com+("election+analysis"+OR+"poll+survey"+OR+"assembly+election")+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+  ],
+};
+
 // Variant-aware exports
-export const FEEDS = SITE_VARIANT === 'tech'
+export const FEEDS = SITE_VARIANT === 'election'
+  ? ELECTION_FEEDS
+  : SITE_VARIANT === 'tech'
   ? TECH_FEEDS
   : SITE_VARIANT === 'finance'
     ? FINANCE_FEEDS
@@ -1213,6 +1302,11 @@ export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: str
   dealsCorpFin: { labelKey: 'header.sourceRegionDeals', feedKeys: ['institutional', 'derivatives'] },
   finRegulation: { labelKey: 'header.sourceRegionFinRegulation', feedKeys: ['regulation'] },
   gulfMena: { labelKey: 'header.sourceRegionGulfMena', feedKeys: ['gccNews'] },
+
+  // Election variant regions
+  electionNational: { labelKey: 'Election News', feedKeys: ['elections'] },
+  electionStates: { labelKey: 'State Coverage', feedKeys: ['kerala', 'tamilnadu', 'westbengal', 'assam', 'puducherry'] },
+  electionAnalysis: { labelKey: 'Analysis & Polls', feedKeys: ['analysis'] },
 };
 
 export const INTEL_SOURCES: Feed[] = [

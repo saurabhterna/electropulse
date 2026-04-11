@@ -806,12 +806,13 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
 // ============================================
 const ELECTION_PANELS: Record<string, PanelConfig> = {
   map: { name: 'India Map', enabled: true, priority: 1 },
-  // Future panels:
-  // 'seat-tally': { name: 'Seat Tally', enabled: true, priority: 1 },
-  // 'swing-analysis': { name: 'Swing vs 2021', enabled: true, priority: 1 },
-  // 'alliance-tracker': { name: 'Alliance Tracker', enabled: true, priority: 1 },
-  // 'live-results': { name: 'Live Results Feed', enabled: true, priority: 1 },
-  // 'turnout': { name: 'Voter Turnout', enabled: true, priority: 2 },
+  elections: { name: 'Election News', enabled: true, priority: 1 },
+  kerala: { name: 'Kerala', enabled: true, priority: 1 },
+  tamilnadu: { name: 'Tamil Nadu', enabled: true, priority: 1 },
+  westbengal: { name: 'West Bengal', enabled: true, priority: 1 },
+  assam: { name: 'Assam', enabled: true, priority: 2 },
+  puducherry: { name: 'Puducherry', enabled: true, priority: 2 },
+  analysis: { name: 'Analysis & Polls', enabled: true, priority: 2 },
 };
 
 const ALL_LAYERS_OFF: MapLayers = {
