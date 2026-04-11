@@ -603,6 +603,7 @@ function gpsjamDevPlugin(): Plugin {
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+    'import.meta.env.VITE_BUILD_TS': JSON.stringify(String(Date.now())),
   },
   plugins: [
     htmlVariantPlugin(),

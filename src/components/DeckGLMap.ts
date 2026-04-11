@@ -512,7 +512,10 @@ export class DeckGLMap {
 
       // ElectroPulse: Load assembly constituency GeoJSON for election variant
       if (SITE_VARIANT === 'election' && !this.electionGeoJsonData) {
-        fetch('/data/geo/all_5_states_ac.geojson')
+        // Cache-busting: append build timestamp so new deploys bypass immutable /data/ cache
+        const _v = `?v=${import.meta.env.VITE_BUILD_TS || Date.now()}`;
+
+        fetch(`/data/geo/all_5_states_ac.geojson${_v}`)
           .then(r => r.json())
           .then((data: GeoJSON.FeatureCollection) => {
             this.electionGeoJsonData = data;
@@ -526,19 +529,19 @@ export class DeckGLMap {
           .catch(err => console.warn('[ElectroPulse] Failed to load constituency GeoJSON:', err));
 
         // Load 2021 historical results
-        fetch('/data/results-2021.json')
+        fetch(`/data/results-2021.json${_v}`)
           .then(r => r.json())
           .then(data => { this.results2021 = data?.states ?? null; })
           .catch(err => console.warn('[ElectroPulse] Failed to load 2021 results:', err));
 
         // Load constituency-level 2021 results
-        fetch('/data/constituency-results-2021.json')
+        fetch(`/data/constituency-results-2021.json${_v}`)
           .then(r => r.json())
           .then(data => { this.constituencyResults2021 = data?.states ?? null; })
           .catch(err => console.warn('[ElectroPulse] Failed to load constituency results:', err));
 
         // Load 2026 candidate data
-        fetch('/data/candidates-2026.json')
+        fetch(`/data/candidates-2026.json${_v}`)
           .then(r => r.json())
           .then(data => { this.candidates2026 = data?.states ?? null; this.alliances2026 = data?._alliances ?? null; })
           .catch(err => console.warn('[ElectroPulse] Failed to load 2026 candidates:', err));
