@@ -111,7 +111,7 @@ import { getCountriesGeoJson, getCountryAtCoordinates, getCountryBbox } from '@/
 import type { FeatureCollection, Geometry } from 'geojson';
 
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
-import { getPartyColor } from '@/config/election-parties';
+import { getPartyColor, getPartyRGBA } from '@/config/election-parties';
 import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { fetchWebcamImage } from '@/services/webcams';
@@ -361,6 +361,10 @@ export class DeckGLMap {
   private candidates2026: Record<string, any> | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private alliances2026: Record<string, any[]> | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private liveResults2026: Record<string, any> | null = null;
+  private liveResultsTimestamp: string | null = null;
+  private liveResultsInterval: ReturnType<typeof setInterval> | null = null;
 
   private static readonly ELECTION_STATE_META: Record<string, {
     code: string; eciCode: string; seats: number; color: string; phase: string; date: string;
@@ -538,6 +542,9 @@ export class DeckGLMap {
           .then(r => r.json())
           .then(data => { this.candidates2026 = data?.states ?? null; this.alliances2026 = data?._alliances ?? null; })
           .catch(err => console.warn('[ElectroPulse] Failed to load 2026 candidates:', err));
+
+        // Start live results polling (active on counting day — May 4, 2026)
+        this.pollLiveResults();
       }
 
       this.render();
@@ -3262,9 +3269,7 @@ export class DeckGLMap {
     const colors = DeckGLMap.ELECTION_STATE_COLORS;
     const selected = this.selectedElectionState;
     const selectedAc = this.selectedElectionAcNo;
-    // Party coloring: enable on May 4 after results are declared
-    // const cResults = this.constituencyResults2021;
-    // const showPartyColors = true;
+    const liveResults = this.liveResults2026;
     return new GeoJsonLayer({
       id: 'election-constituencies-layer',
       data: this.electionGeoJsonData,
@@ -3278,6 +3283,16 @@ export class DeckGLMap {
         // Highlight selected constituency
         if (selected && selectedAc && st === selected && acNo === selectedAc) {
           return [255, 255, 255, 220] as [number, number, number, number];
+        }
+        // Live results: color by winning/leading party
+        if (liveResults && acNo) {
+          const acResult = liveResults[st]?.constituencies?.[String(acNo)];
+          if (acResult?.party) {
+            const rgba = getPartyRGBA(acResult.party);
+            const alpha = acResult.status === 'won' ? 200 : 160;
+            if (selected && st !== selected) return [rgba[0], rgba[1], rgba[2], 30] as [number, number, number, number];
+            return [rgba[0], rgba[1], rgba[2], alpha] as [number, number, number, number];
+          }
         }
         if (selected && st !== selected) return [base[0], base[1], base[2], 30] as [number, number, number, number];
         if (selected && st === selected) return [base[0], base[1], base[2], 200] as [number, number, number, number];
@@ -3306,7 +3321,7 @@ export class DeckGLMap {
       autoHighlight: true,
       highlightColor: [255, 255, 255, 60] as [number, number, number, number],
       updateTriggers: {
-        getFillColor: [this.electionGeoJsonData, selected, selectedAc],
+        getFillColor: [this.electionGeoJsonData, selected, selectedAc, this.liveResultsTimestamp],
         getLineColor: [selected, selectedAc, isLight],
         getLineWidth: [selected, selectedAc],
       },
@@ -3421,6 +3436,54 @@ export class DeckGLMap {
     this.hideElectionStatePanel();
   }
 
+  /** Poll /api/eci-results for live counting data. Starts on load, repeats every 90s. */
+  private async pollLiveResults(): Promise<void> {
+    const fetchResults = async () => {
+      try {
+        const resp = await fetch('/api/eci-results');
+        if (!resp.ok) {
+          console.warn('[ElectroPulse] ECI results API returned', resp.status);
+          return;
+        }
+        const data = await resp.json();
+        if (data?.states && Object.keys(data.states).length > 0) {
+          // Check if any constituency has results
+          const hasResults = Object.values(data.states).some(
+            (s: any) => (s as any).results_available > 0
+          );
+          if (hasResults) {
+            this.liveResults2026 = data.states;
+            this.liveResultsTimestamp = data.timestamp;
+            console.log('[ElectroPulse] Live results updated:', data.timestamp,
+              Object.entries(data.states).map(([k, v]: [string, any]) => `${k}: ${v.results_available}/${v.total_seats}`).join(', '));
+            // Re-render map to show party colors and update open panels
+            this.render();
+            if (this.selectedElectionState) {
+              this.refreshElectionStatePanel();
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[ElectroPulse] Live results poll failed:', err);
+      }
+    };
+
+    // Initial fetch
+    await fetchResults();
+
+    // Poll every 90 seconds
+    if (this.liveResultsInterval) clearInterval(this.liveResultsInterval);
+    this.liveResultsInterval = setInterval(fetchResults, 90_000);
+  }
+
+  /** Refresh the state panel if it's currently open (after live results update). */
+  private refreshElectionStatePanel(): void {
+    const state = this.selectedElectionState;
+    if (!state) return;
+    // Re-show panel with updated data
+    this.showElectionStatePanel(state);
+  }
+
   private showElectionStatePanel(stateName: string): void {
     this.hideElectionStatePanel();
     const meta = DeckGLMap.ELECTION_STATE_META[stateName];
@@ -3442,15 +3505,24 @@ export class DeckGLMap {
     const voteShare: Record<string, number> = stateResults?.vote_share ?? {};
     const majority = Math.ceil(meta.seats / 2) + 1;
 
-    // Sort parties by seats won (descending)
-    const sortedParties = Object.entries(tally).sort((a, b) => b[1] - a[1]);
+    // Get 2026 live results for this state
+    const liveState = this.liveResults2026?.[stateName];
+    const liveTally: Record<string, number> = liveState?.tally ?? {};
+    const liveDeclared = liveState?.declared ?? 0;
+    const liveCounting = liveState?.counting ?? 0;
+    const liveTotal = liveState?.results_available ?? 0;
+    const hasLiveResults = liveTotal > 0;
+
+    // Sort parties by seats won (descending) — use live if available, else 2021
+    const activeTally = hasLiveResults ? liveTally : tally;
+    const sortedParties = Object.entries(activeTally).sort((a, b) => b[1] - a[1]);
     const maxSeats = sortedParties.length > 0 ? sortedParties[0][1] : 1;
 
     // Build seat tally bars HTML
     const tallyBarsHtml = sortedParties.map(([party, seats]) => {
       const color = getPartyColor(party);
       const pct = (seats / meta.seats) * 100;
-      const vs = voteShare[party] ? `${voteShare[party].toFixed(1)}%` : '';
+      const vs = !hasLiveResults && voteShare[party] ? `${voteShare[party].toFixed(1)}%` : '';
       return `<div style="margin-bottom:6px;">
         <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px;">
           <span style="font-weight:500;">${this.escapeStr(party)}</span>
@@ -3466,9 +3538,9 @@ export class DeckGLMap {
     // Majority line position
     const majorityPct = (majority / meta.seats) * 100;
 
-    // Alliance summary HTML
+    // Alliance summary HTML (only for 2021 baseline, not live)
     const allianceColors: Record<string, string> = { NDA: '#ff9933', INDIA: '#19aaed', LDF: '#cc2222', OTHERS: '#888888' };
-    const allianceSummaryHtml = Object.entries(allianceTally)
+    const allianceSummaryHtml = !hasLiveResults ? Object.entries(allianceTally)
       .filter(([, seats]) => seats > 0)
       .sort((a, b) => b[1] - a[1])
       .map(([alliance, seats]) => {
@@ -3478,7 +3550,7 @@ export class DeckGLMap {
           <span style="flex:1;font-size:12px;">${this.escapeStr(alliance)}</span>
           <span style="font-size:14px;font-weight:700;color:${color};">${seats}</span>
         </div>`;
-      }).join('');
+      }).join('') : '';
 
     const panel = document.createElement('div');
     panel.id = 'election-state-panel';
@@ -3495,9 +3567,13 @@ export class DeckGLMap {
     const winnerParty = stateResults?.winning_party ?? '';
     const winnerCM = stateResults?.cm ?? '';
 
-    const acListHtml = constituencies.map(c =>
-      `<div style="padding:5px 8px;border-bottom:1px solid rgba(255,255,255,0.05);font-size:12px;display:flex;justify-content:space-between;cursor:default;" class="ep-ac-row" data-ac-no="${c.no}"><span style="opacity:0.5;min-width:28px;">${c.no}</span><span style="flex:1;margin:0 8px;">${this.escapeStr(c.name)}</span><span style="opacity:0.4;font-size:11px;">${this.escapeStr(c.dist)}</span></div>`
-    ).join('');
+    const acListHtml = constituencies.map(c => {
+      const acLive = liveState?.constituencies?.[String(c.no)];
+      const acPartyColor = acLive?.party ? getPartyColor(acLive.party) : '';
+      const partyDot = acPartyColor ? `<span style="width:8px;height:8px;border-radius:2px;background:${acPartyColor};flex-shrink:0;"></span>` : '';
+      const partyLabel = acLive?.party ? `<span style="font-size:10px;color:${acPartyColor};min-width:36px;text-align:right;">${this.escapeStr(acLive.party)}</span>` : `<span style="opacity:0.4;font-size:11px;">${this.escapeStr(c.dist)}</span>`;
+      return `<div style="padding:5px 8px;border-bottom:1px solid rgba(255,255,255,0.05);font-size:12px;display:flex;align-items:center;gap:4px;cursor:default;" class="ep-ac-row" data-ac-no="${c.no}">${partyDot}<span style="opacity:0.5;min-width:28px;">${c.no}</span><span style="flex:1;margin:0 4px;">${this.escapeStr(c.name)}</span>${partyLabel}</div>`;
+    }).join('');
 
     panel.innerHTML = `
       <button id="epBackBtn" style="background:none;border:1px solid rgba(255,255,255,0.2);color:#fff;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;margin-bottom:12px;display:flex;align-items:center;gap:4px;">
@@ -3520,8 +3596,14 @@ export class DeckGLMap {
           <div style="font-size:10px;opacity:0.5;text-transform:uppercase;letter-spacing:0.5px;">Majority</div>
         </div>
       </div>
+      ${hasLiveResults ? `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;">2026 Live</div>
+          <div style="font-size:9px;padding:2px 6px;border-radius:3px;background:rgba(234,179,8,0.2);color:#eab308;font-weight:600;letter-spacing:0.5px;">${liveDeclared} WON · ${liveCounting} COUNTING</div>
+        </div>
+      ` : ''}
       ${sortedParties.length > 0 ? `
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin-bottom:8px;">2021 Baseline ${winnerCM ? '· ' + this.escapeStr(winnerCM) : ''}</div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin-bottom:8px;">${hasLiveResults ? '' : '2021 Baseline ' + (winnerCM ? '· ' + this.escapeStr(winnerCM) : '')}</div>
         <div style="position:relative;margin-bottom:4px;">
           ${tallyBarsHtml}
           <div style="position:absolute;top:0;bottom:0;left:${majorityPct}%;width:1px;background:rgba(255,255,255,0.4);pointer-events:none;"></div>
@@ -3846,6 +3928,15 @@ export class DeckGLMap {
     const winnerColor = winnerParty ? getPartyColor(winnerParty) : '#888';
     const runnerUpColor = runnerUpParty ? getPartyColor(runnerUpParty) : '#888';
 
+    // Look up 2026 live result
+    const liveAc = this.liveResults2026?.[stateName]?.constituencies?.[String(acNo)];
+    const liveLeading = liveAc?.leading ?? null;
+    const liveParty = liveAc?.party ?? null;
+    const liveStatus = liveAc?.status ?? null;
+    const liveVotes = liveAc?.total_votes ?? 0;
+    const liveMargin = liveAc?.margin ?? 0;
+    const liveColor = liveParty ? getPartyColor(liveParty) : '#888';
+
     // Look up 2026 candidates
     const cand2026 = this.candidates2026?.[stateName]?.[String(acNo)];
 
@@ -3922,6 +4013,31 @@ export class DeckGLMap {
             <div style="font-size:11px;opacity:0.25;margin-top:4px;">Full data coming soon</div>
           </div>
         `}
+
+        ${liveLeading ? `
+        <div style="height:1px;background:rgba(255,255,255,0.08);margin:16px 0;"></div>
+
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.4;font-weight:500;">2026 Live Result</div>
+          <div style="font-size:9px;padding:2px 6px;border-radius:3px;background:${liveStatus === 'won' ? 'rgba(34,197,94,0.2);color:#22c55e' : 'rgba(234,179,8,0.2);color:#eab308'};font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">${liveStatus === 'won' ? 'WON' : 'COUNTING'}</div>
+        </div>
+
+        <div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:14px;margin-bottom:12px;border-left:4px solid ${liveColor};">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;opacity:0.4;margin-bottom:6px;">${liveStatus === 'won' ? 'Winner' : 'Leading'}</div>
+          <div style="font-size:16px;font-weight:600;">${this.escapeStr(liveLeading)}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+            <div style="width:10px;height:10px;border-radius:2px;background:${liveColor};"></div>
+            <span style="font-size:13px;color:${liveColor};font-weight:500;">${this.escapeStr(liveParty ?? '')}</span>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:center;gap:24px;background:rgba(255,255,255,0.04);border-radius:8px;padding:12px;margin-bottom:16px;">
+          ${liveVotes ? `<div style="text-align:center;"><div style="font-size:18px;font-weight:700;color:#fff;">${liveVotes.toLocaleString()}</div><div style="font-size:10px;opacity:0.4;text-transform:uppercase;letter-spacing:0.5px;">Votes</div></div>` : ''}
+          ${liveMargin ? `<div style="text-align:center;"><div style="font-size:18px;font-weight:700;color:#fff;">${liveMargin.toLocaleString()}</div><div style="font-size:10px;opacity:0.4;text-transform:uppercase;letter-spacing:0.5px;">Margin</div></div>` : ''}
+        </div>
+
+        ${this.liveResultsTimestamp ? `<div style="text-align:center;font-size:10px;opacity:0.3;">Updated: ${new Date(this.liveResultsTimestamp).toLocaleTimeString()}</div>` : ''}
+        ` : ''}
 
         <div style="height:1px;background:rgba(255,255,255,0.08);margin:16px 0;"></div>
 
