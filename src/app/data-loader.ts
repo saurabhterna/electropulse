@@ -312,6 +312,8 @@ export class DataLoaderManager implements AppModule {
     // Desktop: server digest has fewer categories than client FEEDS config.
     // Enable per-feed RSS fallback so missing categories fetch directly.
     if (isDesktopRuntime()) return true;
+    // Election variant has no digest server — always use per-feed fallback.
+    if (SITE_VARIANT === 'election') return true;
     return isFeatureEnabled('newsPerFeedFallback');
   }
 
