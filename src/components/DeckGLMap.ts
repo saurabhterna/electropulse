@@ -359,6 +359,8 @@ export class DeckGLMap {
   private constituencyResults2021: Record<string, any> | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private candidates2026: Record<string, any> | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private alliances2026: Record<string, any[]> | null = null;
 
   private static readonly ELECTION_STATE_META: Record<string, {
     code: string; eciCode: string; seats: number; color: string; phase: string; date: string;
@@ -534,7 +536,7 @@ export class DeckGLMap {
         // Load 2026 candidate data
         fetch('/data/candidates-2026.json')
           .then(r => r.json())
-          .then(data => { this.candidates2026 = data?.states ?? null; })
+          .then(data => { this.candidates2026 = data?.states ?? null; this.alliances2026 = data?._alliances ?? null; })
           .catch(err => console.warn('[ElectroPulse] Failed to load 2026 candidates:', err));
       }
 
@@ -3926,11 +3928,12 @@ export class DeckGLMap {
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.4;margin-bottom:12px;font-weight:500;">2026 Election</div>
         ${cand2026 ? `
         <div style="display:flex;flex-direction:column;gap:8px;">
-          ${[
-            { alliance: 'LDF', color: '#e71d36', data: cand2026.ldf },
-            { alliance: 'UDF', color: '#3b82f6', data: cand2026.udf },
-            { alliance: 'NDA', color: '#f97316', data: cand2026.nda },
-          ].filter(a => a.data?.candidate).map(a => {
+          ${(this.alliances2026?.[stateName] ?? [
+            { key: 'ldf', label: 'LDF', color: '#e71d36' },
+            { key: 'udf', label: 'UDF', color: '#3b82f6' },
+            { key: 'nda', label: 'NDA', color: '#f97316' },
+          ]).map((a: { key: string; label: string; color: string }) => ({ alliance: a.label, color: a.color, data: cand2026[a.key] }))
+          .filter((a: { data?: { candidate?: string } }) => a.data?.candidate).map((a: { alliance: string; color: string; data: { party: string; candidate: string } }) => {
             const partyColor = getPartyColor(a.data.party);
             return `<div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px 12px;border-left:3px solid ${a.color};">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
