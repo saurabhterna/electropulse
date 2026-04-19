@@ -1,6 +1,7 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { fetchWithTimeout } from './_relay.js';
+import { Redis } from '@upstash/redis';
 
 export const config = { runtime: 'edge' };
 
@@ -184,6 +185,104 @@ async function fetchStateResults(stateCode, totalSeats) {
   return results;
 }
 
+// ─── Redis shared cache ───────────────────────────────────────────────────────
+// All users share a single cached scrape. ECI gets at most 1 request/minute
+// regardless of how many users are on the dashboard.
+
+const CACHE_KEY = 'eci:results:v1';
+const CACHE_TTL_SECONDS = 60;       // Refresh ECI data at most once per minute
+const CACHE_STALE_SECONDS = 300;    // Serve stale up to 5 min if ECI is down
+
+let _redis = null;
+function getRedis() {
+  if (_redis) return _redis;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  _redis = new Redis({ url, token });
+  return _redis;
+}
+
+async function getCached() {
+  const redis = getRedis();
+  if (!redis) return null;
+  try {
+    const raw = await redis.get(CACHE_KEY);
+    if (!raw) return null;
+    // Upstash returns already-parsed JSON for objects
+    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+  } catch { return null; }
+}
+
+async function setCached(data) {
+  const redis = getRedis();
+  if (!redis) return;
+  try {
+    // Store with TTL slightly longer than CACHE_TTL so stale reads are possible
+    await redis.set(CACHE_KEY, JSON.stringify(data), { ex: CACHE_STALE_SECONDS });
+  } catch (e) {
+    console.warn('[ECI] Redis write failed:', e?.message);
+  }
+}
+
+// ─── Scrape all 5 states from ECI ────────────────────────────────────────────
+
+async function scrapeAllStates() {
+  const stateEntries = Object.keys(STATE_CODES);
+  const output = {
+    slug: ECI_SLUG,
+    timestamp: new Date().toISOString(),
+    scraped_at_ms: Date.now(),
+    states: {},
+  };
+
+  const statePromises = stateEntries.map(async (stateName) => {
+    const code = STATE_CODES[stateName];
+    const seats = STATE_SEATS[stateName];
+    const results = await fetchStateResults(code, seats);
+
+    const tally = {};
+    let declared = 0;
+    let counting = 0;
+
+    for (const r of results) {
+      if (r.party) tally[r.party] = (tally[r.party] || 0) + 1;
+      if (r.status === 'won') declared++;
+      else counting++;
+    }
+
+    return {
+      stateName,
+      data: {
+        total_seats: seats,
+        declared,
+        counting,
+        results_available: results.length,
+        tally,
+        constituencies: Object.fromEntries(
+          results.map(r => [String(r.acNo), {
+            ac_name: r.acNameFull,
+            leading: r.leading,
+            party: r.party,
+            status: r.status,
+            total_votes: r.totalVotes,
+            margin: r.margin,
+          }])
+        ),
+      },
+    };
+  });
+
+  const settled = await Promise.allSettled(statePromises);
+  for (const r of settled) {
+    if (r.status === 'fulfilled') output.states[r.value.stateName] = r.value.data;
+  }
+
+  return output;
+}
+
+// ─── Handler ──────────────────────────────────────────────────────────────────
+
 export default async function handler(req) {
   const corsHeaders = getCorsHeaders(req, 'GET, OPTIONS');
 
@@ -207,81 +306,78 @@ export default async function handler(req) {
   }
 
   const requestUrl = new URL(req.url);
-  const stateParam = requestUrl.searchParams.get('state');
+  const forceRefresh = requestUrl.searchParams.get('refresh') === '1';
 
   try {
-    const statesToFetch = stateParam
-      ? { [stateParam.toUpperCase()]: true }
-      : Object.keys(STATE_CODES);
+    // ── 1. Try cache first ──────────────────────────────────────────────────
+    const cached = forceRefresh ? null : await getCached();
+    const nowMs = Date.now();
+    const cacheAgeMs = cached?.scraped_at_ms ? nowMs - cached.scraped_at_ms : Infinity;
+    const isFresh = cacheAgeMs < CACHE_TTL_SECONDS * 1000;
+    const isStale = cacheAgeMs < CACHE_STALE_SECONDS * 1000;
 
-    const output = {
-      slug: ECI_SLUG,
-      timestamp: new Date().toISOString(),
-      states: {},
-    };
-
-    // Fetch all requested states in parallel
-    const stateEntries = (Array.isArray(statesToFetch) ? statesToFetch : Object.keys(statesToFetch))
-      .filter(s => STATE_CODES[s]);
-
-    const statePromises = stateEntries.map(async (stateName) => {
-      const code = STATE_CODES[stateName];
-      const seats = STATE_SEATS[stateName];
-      const results = await fetchStateResults(code, seats);
-
-      // Build tally
-      const tally = {};
-      let declared = 0;
-      let counting = 0;
-
-      for (const r of results) {
-        if (r.party) {
-          tally[r.party] = (tally[r.party] || 0) + 1;
-        }
-        if (r.status === 'won') declared++;
-        else counting++;
-      }
-
-      return {
-        stateName,
-        data: {
-          total_seats: seats,
-          declared,
-          counting,
-          results_available: results.length,
-          tally,
-          constituencies: Object.fromEntries(
-            results.map(r => [String(r.acNo), {
-              ac_name: r.acNameFull,
-              leading: r.leading,
-              party: r.party,
-              status: r.status,
-              total_votes: r.totalVotes,
-              margin: r.margin,
-            }])
-          ),
+    if (cached && isFresh) {
+      // Serve fresh cache — no ECI request needed
+      return new Response(JSON.stringify({ ...cached, cache: 'hit' }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=30, s-maxage=60, stale-while-revalidate=120',
+          'X-Cache': 'HIT',
+          'X-Cache-Age': String(Math.round(cacheAgeMs / 1000)),
+          ...corsHeaders,
         },
-      };
-    });
-
-    const stateResults = await Promise.allSettled(statePromises);
-    for (const r of stateResults) {
-      if (r.status === 'fulfilled') {
-        output.states[r.value.stateName] = r.value.data;
-      }
+      });
     }
 
-    return new Response(JSON.stringify(output), {
+    // ── 2. Scrape ECI ───────────────────────────────────────────────────────
+    let fresh;
+    let eciError = null;
+    try {
+      fresh = await scrapeAllStates();
+      // Persist to Redis (fire-and-forget — don't block response)
+      setCached(fresh).catch(() => {});
+    } catch (err) {
+      eciError = err;
+      console.error('[ECI] Scrape failed:', err?.message);
+    }
+
+    // ── 3. Fallback to stale cache if ECI is down ───────────────────────────
+    if (!fresh && cached && isStale) {
+      return new Response(JSON.stringify({ ...cached, cache: 'stale', stale_reason: eciError?.message }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=15, s-maxage=30',
+          'X-Cache': 'STALE',
+          'X-Cache-Age': String(Math.round(cacheAgeMs / 1000)),
+          ...corsHeaders,
+        },
+      });
+    }
+
+    if (!fresh) {
+      return new Response(JSON.stringify({
+        error: 'ECI results unavailable',
+        details: eciError?.message || 'No data',
+      }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      });
+    }
+
+    return new Response(JSON.stringify({ ...fresh, cache: 'miss' }), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        // Short cache: results change every few minutes on counting day
         'Cache-Control': 'public, max-age=30, s-maxage=60, stale-while-revalidate=120',
+        'X-Cache': 'MISS',
         ...corsHeaders,
       },
     });
+
   } catch (error) {
-    console.error('ECI results error:', error);
+    console.error('[ECI] Handler error:', error);
     return new Response(JSON.stringify({
       error: 'Failed to fetch ECI results',
       details: error?.message || String(error),
