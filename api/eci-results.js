@@ -1,6 +1,6 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
-import { fetchWithTimeout } from './_relay.js';
+import { fetchWithTimeout, getRelayBaseUrl, getRelayHeaders } from './_relay.js';
 import { Redis } from '@upstash/redis';
 
 export const config = { runtime: 'edge' };
@@ -36,18 +36,37 @@ const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
  */
 async function fetchStatewisePage(stateCode, pageNum) {
   const url = `${ECI_BASE}/statewise${stateCode}${pageNum}.htm`;
-  const resp = await fetchWithTimeout(url, {
-    headers: {
-      'User-Agent': BROWSER_UA,
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Referer': `https://results.eci.gov.in/${ECI_SLUG}/`,
-    },
-  }, 15000);
+  const reqHeaders = {
+    'User-Agent': BROWSER_UA,
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': `https://results.eci.gov.in/${ECI_SLUG}/`,
+  };
 
-  if (!resp.ok) return [];
+  // Try direct fetch first
+  let resp = null;
+  try {
+    resp = await fetchWithTimeout(url, { headers: reqHeaders }, 15000);
+  } catch (_) { /* fall through to relay */ }
+
+  // ECI blocks datacenter IPs (Akamai) — fall back to Railway relay
+  if (!resp || !resp.ok) {
+    const relayBase = getRelayBaseUrl();
+    if (relayBase) {
+      try {
+        const relayUrl = `${relayBase}/proxy?url=${encodeURIComponent(url)}`;
+        resp = await fetchWithTimeout(relayUrl, {
+          headers: getRelayHeaders({ ...reqHeaders }),
+        }, 20000);
+      } catch (_) { /* relay also failed */ }
+    }
+  }
+
+  if (!resp || !resp.ok) return [];
 
   const html = await resp.text();
+  // Quick sanity check — Access Denied pages have no table rows
+  if (html.includes('Access Denied') || html.includes('access denied')) return [];
   return parseStatewiseHtml(html);
 }
 
