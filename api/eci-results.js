@@ -185,14 +185,19 @@ async function fetchStateResults(stateCode, totalSeats) {
   return results;
 }
 
-// ─── Redis shared cache ───────────────────────────────────────────────────────
-// All users share a single cached scrape. ECI gets at most 1 request/minute
-// regardless of how many users are on the dashboard.
+// ─── Cache layer ──────────────────────────────────────────────────────────────
+// Two-tier: in-memory (warm edge instance) + Redis (if configured).
+// Even without Redis, Vercel reuses warm instances within a region —
+// in-memory cache keeps ECI load low across concurrent requests.
 
-const CACHE_KEY = 'eci:results:v1';
 const CACHE_TTL_SECONDS = 60;       // Refresh ECI data at most once per minute
 const CACHE_STALE_SECONDS = 300;    // Serve stale up to 5 min if ECI is down
 
+// In-memory store — shared across requests on the same warm edge instance
+let _memCache = null;  // { data, scraped_at_ms }
+
+// Redis — optional, gives cross-instance sharing and cross-region protection
+const CACHE_KEY = 'eci:results:v1';
 let _redis = null;
 function getRedis() {
   if (_redis) return _redis;
@@ -204,21 +209,30 @@ function getRedis() {
 }
 
 async function getCached() {
+  // 1. Check in-memory first (zero latency)
+  if (_memCache && _memCache.scraped_at_ms) return _memCache.data;
+
+  // 2. Fall back to Redis if configured
   const redis = getRedis();
   if (!redis) return null;
   try {
     const raw = await redis.get(CACHE_KEY);
     if (!raw) return null;
-    // Upstash returns already-parsed JSON for objects
-    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    // Warm the in-memory cache from Redis
+    _memCache = { data: parsed, scraped_at_ms: parsed.scraped_at_ms };
+    return parsed;
   } catch { return null; }
 }
 
 async function setCached(data) {
+  // Always update in-memory
+  _memCache = { data, scraped_at_ms: data.scraped_at_ms };
+
+  // Write to Redis if configured (fire-and-forget)
   const redis = getRedis();
   if (!redis) return;
   try {
-    // Store with TTL slightly longer than CACHE_TTL so stale reads are possible
     await redis.set(CACHE_KEY, JSON.stringify(data), { ex: CACHE_STALE_SECONDS });
   } catch (e) {
     console.warn('[ECI] Redis write failed:', e?.message);
