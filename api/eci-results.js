@@ -1,5 +1,4 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
-import { validateApiKey } from './_api-key.js';
 import { fetchWithTimeout, getRelayBaseUrl, getRelayHeaders } from './_relay.js';
 import { Redis } from '@upstash/redis';
 
@@ -328,14 +327,6 @@ export default async function handler(req) {
 
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
-  }
-
-  const keyCheck = validateApiKey(req);
-  if (keyCheck.required && !keyCheck.valid) {
-    return new Response(JSON.stringify({ error: keyCheck.error }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
   }
 
   const requestUrl = new URL(req.url);
