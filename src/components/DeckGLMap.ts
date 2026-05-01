@@ -3559,13 +3559,14 @@ export class DeckGLMap {
       if (declared >= total) {
         const id = `${stateName}:complete`;
         if (!this.sentMilestones.has(id)) {
-          const winner = s.tally
-            ? Object.entries(s.tally as Record<string, number>).sort(([, a], [, b]) => b - a)[0]
+          const winnerEntry = s.tally
+            ? Object.entries(s.tally as Record<string, number>).sort(([, a], [, b]) => b - a).at(0) ?? null
             : null;
+          const winnerStr = winnerEntry ? `${winnerEntry[0]}: ${winnerEntry[1]} seats` : '';
           milestones.push({
             id,
             event_type: 'counting_complete',
-            message: `✅ *ElectroPulse*: All ${total} seats declared in *${stateName}*.\n${winner ? `${winner[0]}: ${winner[1]} seats` : ''} Live: https://electropulse.vercel.app`,
+            message: `✅ *ElectroPulse*: All ${total} seats declared in *${stateName}*.\n${winnerStr} Live: https://electropulse.vercel.app`,
           });
         }
       }
@@ -3775,7 +3776,7 @@ export class DeckGLMap {
     // Sort parties by seats won (descending) — use live if available, else 2021
     const activeTally = hasLiveResults ? liveTally : tally;
     const sortedParties = Object.entries(activeTally).sort((a, b) => b[1] - a[1]);
-    const maxSeats = sortedParties.length > 0 ? sortedParties[0][1] : 1;
+    const maxSeats = sortedParties.length > 0 ? (sortedParties[0]?.[1] ?? 1) : 1;
 
     // Build seat tally bars HTML
     const tallyBarsHtml = sortedParties.map(([party, seats]) => {
@@ -3823,7 +3824,6 @@ export class DeckGLMap {
     `;
 
     const titleCased = stateName.split(' ').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
-    const winnerParty = stateResults?.winning_party ?? '';
     const winnerCM = stateResults?.cm ?? '';
 
     const acListHtml = constituencies.map(c => {
@@ -3904,11 +3904,10 @@ export class DeckGLMap {
     this.hideConstituencyDetail();
 
     const initialMeta = stateName ? DeckGLMap.ELECTION_STATE_META[stateName] : null;
-    const initialTitleCased = stateName ? stateName.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ') : '';
     const accentColor = initialMeta?.color ?? '#888';
 
     // State options for dropdown
-    const stateOptions = Object.entries(DeckGLMap.ELECTION_STATE_META).map(([name, m]) => {
+    const stateOptions = Object.entries(DeckGLMap.ELECTION_STATE_META).map(([name, _meta]) => {
       const tc = name.split(' ').map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
       return `<option value="${name}" ${name === stateName ? 'selected' : ''} style="color:#e0e0e0;">${tc}</option>`;
     }).join('');
@@ -4394,9 +4393,9 @@ export class DeckGLMap {
       // Compute centroid from geometry
       let sumLon = 0, sumLat = 0, count = 0;
       const geom = f.geometry as { type: string; coordinates: unknown };
-      const processCoords = (coords: number[][]) => { for (const c of coords) { sumLon += c[0]; sumLat += c[1]; count++; } };
-      if (geom.type === 'Polygon') { processCoords((geom.coordinates as number[][][])[0]); }
-      else if (geom.type === 'MultiPolygon') { for (const poly of (geom.coordinates as number[][][][])) processCoords(poly[0]); }
+      const processCoords = (coords: number[][]) => { for (const c of coords) { sumLon += (c[0] ?? 0); sumLat += (c[1] ?? 0); count++; } };
+      if (geom.type === 'Polygon') { const ring = (geom.coordinates as number[][][])[0]; if (ring) processCoords(ring); }
+      else if (geom.type === 'MultiPolygon') { for (const poly of (geom.coordinates as number[][][][])) { const ring = poly[0]; if (ring) processCoords(ring); } }
       return {
         acNo: props.AC_NO as number,
         acName: props.AC_NAME as string,
