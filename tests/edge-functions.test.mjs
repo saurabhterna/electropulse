@@ -81,6 +81,8 @@ describe('Legacy api/*.js endpoint allowlist', () => {
     'eci-results.js',
     'telegram-feed.js',
     'version.js',
+    'whatsapp-notify.js',
+    'whatsapp-subscribe.js',
   ]);
 
   const currentEndpoints = readdirSync(apiDir).filter(

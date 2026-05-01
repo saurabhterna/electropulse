@@ -365,6 +365,8 @@ export class DeckGLMap {
   private liveResults2026: Record<string, any> | null = null;
   private liveResultsTimestamp: string | null = null;
   private liveResultsInterval: ReturnType<typeof setInterval> | null = null;
+  // Milestone tracking — keys are milestone IDs, value is whether notification was sent
+  private sentMilestones: Set<string> = new Set();
 
   private static readonly ELECTION_STATE_META: Record<string, {
     code: string; eciCode: string; seats: number; color: string; phase: string; date: string;
@@ -3464,6 +3466,8 @@ export class DeckGLMap {
             if (this.selectedElectionState) {
               this.refreshElectionStatePanel();
             }
+            // Check for counting-day milestones and dispatch WhatsApp alerts
+            this.checkMilestonesAndNotify(data.states);
           }
         }
       } catch (err) {
@@ -3485,6 +3489,258 @@ export class DeckGLMap {
     if (!state) return;
     // Re-show panel with updated data
     this.showElectionStatePanel(state);
+  }
+
+  // ─── WhatsApp milestone notifications ──────────────────────────────────────
+
+  /**
+   * After each ECI poll, check for notable counting-day milestones and
+   * dispatch WhatsApp notifications to subscribers via /api/whatsapp-notify.
+   * Each milestone is only sent once per page session (sentMilestones Set).
+   */
+  private checkMilestonesAndNotify(states: Record<string, any>): void {
+    const milestones: Array<{ id: string; event_type: string; message: string }> = [];
+
+    for (const [stateName, s] of Object.entries(states)) {
+      const declared: number = s.declared || 0;
+      const total: number = s.total_seats || 0;
+      if (!total || !declared) continue;
+
+      // State counting started (first result)
+      if (declared === 1) {
+        const id = `${stateName}:started`;
+        if (!this.sentMilestones.has(id)) {
+          milestones.push({
+            id,
+            event_type: 'counting_started',
+            message: `🗳️ *ElectroPulse*: Counting has started in *${stateName}*!\nFirst result declared. Track live: https://electropulse.vercel.app`,
+          });
+        }
+      }
+
+      // Halfway mark
+      if (declared >= Math.floor(total / 2)) {
+        const id = `${stateName}:half`;
+        if (!this.sentMilestones.has(id)) {
+          const tally = s.tally as Record<string, number> | undefined;
+          const tallyStr = tally
+            ? Object.entries(tally)
+                .sort(([, a], [, b]) => (b as number) - (a as number))
+                .slice(0, 3)
+                .map(([p, n]) => `${p}: ${n}`)
+                .join(' | ')
+            : '';
+          milestones.push({
+            id,
+            event_type: 'halfway',
+            message: `📊 *ElectroPulse*: *${stateName}* halfway — ${declared}/${total} seats declared.\n${tallyStr}\nLive: https://electropulse.vercel.app`,
+          });
+        }
+      }
+
+      // Winner clear: a party/alliance has majority
+      const majority = Math.floor(total / 2) + 1;
+      if (s.tally) {
+        for (const [party, seats] of Object.entries(s.tally as Record<string, number>)) {
+          if (seats >= majority) {
+            const id = `${stateName}:winner:${party}`;
+            if (!this.sentMilestones.has(id)) {
+              milestones.push({
+                id,
+                event_type: 'state_winner',
+                message: `🏆 *ElectroPulse*: *${party}* wins majority in *${stateName}!*\n${seats}/${total} seats. Live: https://electropulse.vercel.app`,
+              });
+            }
+          }
+        }
+      }
+
+      // All counting complete
+      if (declared >= total) {
+        const id = `${stateName}:complete`;
+        if (!this.sentMilestones.has(id)) {
+          const winner = s.tally
+            ? Object.entries(s.tally as Record<string, number>).sort(([, a], [, b]) => b - a)[0]
+            : null;
+          milestones.push({
+            id,
+            event_type: 'counting_complete',
+            message: `✅ *ElectroPulse*: All ${total} seats declared in *${stateName}*.\n${winner ? `${winner[0]}: ${winner[1]} seats` : ''} Live: https://electropulse.vercel.app`,
+          });
+        }
+      }
+    }
+
+    for (const m of milestones) {
+      this.sentMilestones.add(m.id);
+      this.dispatchWhatsAppAlert(m.event_type, m.message).catch((err) =>
+        console.warn('[ElectroPulse] WhatsApp notify failed:', err?.message)
+      );
+    }
+  }
+
+  private async dispatchWhatsAppAlert(event_type: string, message: string): Promise<void> {
+    const secret = (window as any).__WHATSAPP_NOTIFY_SECRET__ || '';
+    const url = secret
+      ? `/api/whatsapp-notify?secret=${encodeURIComponent(secret)}`
+      : '/api/whatsapp-notify';
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, event_type }),
+    });
+
+    const result = await resp.json().catch(() => ({}));
+    if (result.sent > 0) {
+      console.log(`[ElectroPulse] WhatsApp alert sent: event=${event_type} sent=${result.sent}`);
+    }
+  }
+
+  // ─── WhatsApp Subscribe Modal ───────────────────────────────────────────────
+
+  /** Called by header "Get Alerts" button */
+  public openWhatsAppAlertsModal(): void {
+    // Remove existing modal if any
+    document.getElementById('waAlertsModal')?.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'waAlertsModal';
+    modal.style.cssText = `
+      position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;
+      display:flex;align-items:center;justify-content:center;padding:20px;
+    `;
+
+    modal.innerHTML = `
+      <div id="waAlertsCard" style="
+        background:#1a1a2e;border:1px solid rgba(37,211,102,0.3);border-radius:12px;
+        padding:28px;max-width:400px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.6);
+        font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#e0e0e0;
+      ">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="#25d366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          <div>
+            <div style="font-size:16px;font-weight:600;color:#25d366;">WhatsApp Alerts</div>
+            <div style="font-size:11px;opacity:0.5;margin-top:2px;">Counting Day — May 4, 2026</div>
+          </div>
+          <button id="waAlertsClose" style="margin-left:auto;background:none;border:none;color:#888;cursor:pointer;font-size:20px;line-height:1;">×</button>
+        </div>
+
+        <div style="font-size:13px;opacity:0.7;margin-bottom:18px;line-height:1.5;">
+          Get WhatsApp alerts when key milestones happen on counting day:
+          state winner called, halfway declared, and final results.
+        </div>
+
+        <div id="waAlertsForm">
+          <label style="display:block;font-size:12px;opacity:0.6;margin-bottom:6px;">Your mobile number</label>
+          <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:10px 12px;font-size:13px;color:#aaa;flex-shrink:0;">+91</div>
+            <input id="waPhoneInput" type="tel" placeholder="9876543210" maxlength="15" style="
+              flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);
+              border-radius:6px;padding:10px 12px;font-size:14px;color:#e0e0e0;outline:none;
+              font-family:inherit;
+            " />
+          </div>
+          <button id="waSubscribeBtn" style="
+            width:100%;background:#25d366;border:none;color:#fff;
+            padding:12px;border-radius:8px;font-size:14px;font-weight:600;
+            cursor:pointer;font-family:inherit;transition:background 0.2s;
+          ">Get WhatsApp Alerts</button>
+          <div id="waAlertsMsg" style="margin-top:12px;font-size:12px;text-align:center;min-height:16px;"></div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Close on backdrop click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.remove();
+    });
+    document.getElementById('waAlertsClose')?.addEventListener('click', () => modal.remove());
+
+    const phoneInput = document.getElementById('waPhoneInput') as HTMLInputElement;
+    const subscribeBtn = document.getElementById('waSubscribeBtn') as HTMLButtonElement;
+    const msgDiv = document.getElementById('waAlertsMsg') as HTMLDivElement;
+
+    phoneInput.focus();
+
+    // Allow Enter key to submit
+    phoneInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') subscribeBtn.click();
+    });
+
+    subscribeBtn.addEventListener('click', async () => {
+      const phone = phoneInput.value.trim();
+      if (!phone) {
+        msgDiv.style.color = '#ff6b6b';
+        msgDiv.textContent = 'Please enter your mobile number.';
+        return;
+      }
+
+      subscribeBtn.disabled = true;
+      subscribeBtn.textContent = 'Subscribing…';
+      msgDiv.textContent = '';
+
+      try {
+        const resp = await fetch('/api/whatsapp-subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone }),
+        });
+        const data = await resp.json().catch(() => ({}));
+
+        if (resp.ok) {
+          if (data.status === 'no_storage') {
+            // Backend not configured yet — show join link
+            msgDiv.style.color = '#ffa94d';
+            msgDiv.innerHTML = `
+              Storage not configured yet. Join our WhatsApp broadcast manually:<br>
+              <a href="${data.whatsapp_join_url || '#'}" target="_blank" style="color:#25d366;font-weight:600;">
+                Tap to join on WhatsApp
+              </a>
+            `;
+          } else if (data.sandbox_required && data.whatsapp_join_url) {
+            // Twilio sandbox — user must also text join word
+            document.getElementById('waAlertsForm')!.innerHTML = `
+              <div style="text-align:center;padding:10px 0;">
+                <div style="font-size:32px;margin-bottom:12px;">✅</div>
+                <div style="font-size:14px;font-weight:600;margin-bottom:8px;">Subscribed!</div>
+                <div style="font-size:12px;opacity:0.7;line-height:1.6;margin-bottom:16px;">
+                  One more step: tap below to send a WhatsApp message to activate alerts.
+                </div>
+                <a href="${data.whatsapp_join_url}" target="_blank" style="
+                  display:inline-block;background:#25d366;color:#fff;text-decoration:none;
+                  padding:12px 20px;border-radius:8px;font-size:14px;font-weight:600;
+                ">Open WhatsApp to Activate</a>
+              </div>
+            `;
+          } else {
+            document.getElementById('waAlertsForm')!.innerHTML = `
+              <div style="text-align:center;padding:10px 0;">
+                <div style="font-size:32px;margin-bottom:12px;">✅</div>
+                <div style="font-size:14px;font-weight:600;margin-bottom:6px;">
+                  ${data.status === 'already_subscribed' ? 'Already subscribed!' : 'Subscribed!'}
+                </div>
+                <div style="font-size:12px;opacity:0.7;line-height:1.6;">
+                  You'll receive WhatsApp alerts on <strong>${data.phone}</strong> on counting day (May 4).
+                </div>
+              </div>
+            `;
+          }
+        } else {
+          msgDiv.style.color = '#ff6b6b';
+          msgDiv.textContent = data.error || 'Something went wrong. Please try again.';
+          subscribeBtn.disabled = false;
+          subscribeBtn.textContent = 'Get WhatsApp Alerts';
+        }
+      } catch {
+        msgDiv.style.color = '#ff6b6b';
+        msgDiv.textContent = 'Network error. Please try again.';
+        subscribeBtn.disabled = false;
+        subscribeBtn.textContent = 'Get WhatsApp Alerts';
+      }
+    });
   }
 
   private showElectionStatePanel(stateName: string): void {

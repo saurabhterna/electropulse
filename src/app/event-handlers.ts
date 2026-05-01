@@ -288,6 +288,11 @@ export class EventHandlerManager implements AppModule {
       this.ctx.map?.openVoterSearch();
     });
 
+    // ElectroPulse: WhatsApp Alerts header button
+    document.getElementById('whatsappAlertsHeaderBtn')?.addEventListener('click', () => {
+      this.ctx.map?.openWhatsAppAlertsModal();
+    });
+
     document.getElementById('copyLinkBtn')?.addEventListener('click', async () => {
       const shareUrl = this.getShareUrl();
       if (!shareUrl) return;
