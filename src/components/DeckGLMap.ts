@@ -3441,46 +3441,193 @@ export class DeckGLMap {
     this.hideElectionStatePanel();
   }
 
-  /** Poll /api/eci-results for live counting data. Starts on load, repeats every 90s. */
+  /** Poll ECI live results. Tries server API first (cached), falls back to direct browser fetch. */
   private async pollLiveResults(): Promise<void> {
+    const applyResults = (states: Record<string, any>, source: string) => {
+      const hasResults = Object.values(states).some((s: any) => (s as any).results_available > 0);
+      if (!hasResults) return false;
+      this.liveResults2026 = states;
+      this.liveResultsTimestamp = new Date().toISOString();
+      console.log(`[ElectroPulse] Live results (${source}):`,
+        Object.entries(states).map(([k, v]: [string, any]) => `${k}: ${v.results_available}/${v.total_seats}`).join(', '));
+      this.render();
+      if (this.selectedElectionState) this.refreshElectionStatePanel();
+      this.checkMilestonesAndNotify(states);
+      return true;
+    };
+
     const fetchResults = async () => {
+      // ── 1. Try server API (returns in-memory cached data quickly) ─────────
       try {
         const resp = await fetch('/api/eci-results');
-        if (!resp.ok) {
-          console.warn('[ElectroPulse] ECI results API returned', resp.status);
-          return;
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data?.states && applyResults(data.states, 'api')) return;
         }
-        const data = await resp.json();
-        if (data?.states && Object.keys(data.states).length > 0) {
-          // Check if any constituency has results
-          const hasResults = Object.values(data.states).some(
-            (s: any) => (s as any).results_available > 0
-          );
-          if (hasResults) {
-            this.liveResults2026 = data.states;
-            this.liveResultsTimestamp = data.timestamp;
-            console.log('[ElectroPulse] Live results updated:', data.timestamp,
-              Object.entries(data.states).map(([k, v]: [string, any]) => `${k}: ${v.results_available}/${v.total_seats}`).join(', '));
-            // Re-render map to show party colors and update open panels
-            this.render();
-            if (this.selectedElectionState) {
-              this.refreshElectionStatePanel();
-            }
-            // Check for counting-day milestones and dispatch WhatsApp alerts
-            this.checkMilestonesAndNotify(data.states);
-          }
-        }
+      } catch { /* fall through to direct fetch */ }
+
+      // ── 2. Direct browser fetch (bypasses Akamai IP block on Vercel) ──────
+      // ECI sends Access-Control-Allow-Origin: * so browsers on home IPs can fetch directly.
+      try {
+        const states = await this.fetchECIDirectly();
+        if (states) applyResults(states, 'direct');
       } catch (err) {
-        console.warn('[ElectroPulse] Live results poll failed:', err);
+        console.warn('[ElectroPulse] Direct ECI fetch failed:', err);
       }
     };
 
-    // Initial fetch
     await fetchResults();
-
-    // Poll every 90 seconds
     if (this.liveResultsInterval) clearInterval(this.liveResultsInterval);
     this.liveResultsInterval = setInterval(fetchResults, 90_000);
+  }
+
+  // ─── ECI_STATE_CODES maps stateName → ECI page code ───────────────────────
+  private static readonly ECI_STATE = {
+    'ASSAM':      { code: 'S03', seats: 126 },
+    'KERALA':     { code: 'S11', seats: 140 },
+    'TAMIL NADU': { code: 'S22', seats: 234 },
+    'WEST BENGAL':{ code: 'S25', seats: 294 },
+    'PUDUCHERRY': { code: 'U07', seats: 30  },
+  } as Record<string, { code: string; seats: number }>;
+
+  /** Direct browser-side ECI scraper — runs in user's browser, bypasses datacenter IP blocks. */
+  private async fetchECIDirectly(): Promise<Record<string, any> | null> {
+    // Allow runtime slug override via URL param or localStorage (for counting-day slug changes)
+    const slug =
+      new URLSearchParams(window.location.search).get('eciSlug') ||
+      localStorage.getItem('ECI_SLUG') ||
+      'ResultAcGenMay2026';
+
+    const base = `https://results.eci.gov.in/${slug}`;
+    const reqHeaders = {
+      'Accept': 'text/html,application/xhtml+xml',
+      'Accept-Language': 'en-IN,en;q=0.9',
+    };
+
+    const fetchPage = async (code: string, page: number): Promise<any[]> => {
+      const url = `${base}/statewise${code}${page}.htm`;
+      try {
+        const resp = await fetch(url, { headers: reqHeaders });
+        if (!resp.ok) return [];
+        const html = await resp.text();
+        if (html.includes('Access Denied') || html.includes('access denied')) return [];
+        return this.parseECIHtml(html);
+      } catch {
+        return [];
+      }
+    };
+
+    const output: Record<string, any> = {};
+    const stateEntries = Object.entries(DeckGLMap.ECI_STATE);
+
+    await Promise.allSettled(stateEntries.map(async ([stateName, { code, seats }]) => {
+      const totalPages = Math.ceil(seats / 20);
+      const results: any[] = [];
+
+      // Fetch in batches of 4
+      for (let i = 0; i < totalPages; i += 4) {
+        const batch = Array.from({ length: Math.min(4, totalPages - i) }, (_, j) =>
+          fetchPage(code, i + j + 1)
+        );
+        const settled = await Promise.allSettled(batch);
+        for (const r of settled) {
+          if (r.status === 'fulfilled') results.push(...r.value);
+        }
+      }
+
+      const tally: Record<string, number> = {};
+      let declared = 0, counting = 0;
+      for (const r of results) {
+        if (r.party) tally[r.party] = (tally[r.party] ?? 0) + 1;
+        if (r.status === 'won') declared++; else counting++;
+      }
+
+      output[stateName] = {
+        total_seats: seats,
+        declared,
+        counting,
+        results_available: results.length,
+        tally,
+        constituencies: Object.fromEntries(
+          results.map(r => [String(r.acNo), {
+            ac_name: r.acNameFull,
+            leading: r.leading,
+            party: r.party,
+            status: r.status,
+            total_votes: r.totalVotes,
+            margin: r.margin,
+          }])
+        ),
+      };
+    }));
+
+    const hasAny = Object.values(output).some((s: any) => s.results_available > 0);
+    return hasAny ? output : null;
+  }
+
+  /** Parse ECI statewise HTML table using DOMParser (browser-native, no regex). */
+  private parseECIHtml(html: string): any[] {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const results: any[] = [];
+
+    for (const row of Array.from(doc.querySelectorAll('tr'))) {
+      const cells = Array.from(row.querySelectorAll('td')).map(td =>
+        td.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+      );
+      if (cells.length < 4) continue;
+
+      let acNo: number | null = null;
+      let acName = '';
+      let dataStartIdx = 0;
+
+      const acMatch = cells[0]?.match(/^\s*(\d+)\s*[-–.]\s*(.+)/);
+      if (acMatch) {
+        acNo = parseInt(acMatch[1] ?? '0');
+        acName = acMatch[2]?.trim() ?? '';
+        dataStartIdx = 1;
+      } else if (/^\d+$/.test(cells[0]?.trim() ?? '')) {
+        acNo = parseInt(cells[0]?.trim() ?? '0');
+        acName = cells[1]?.trim() ?? '';
+        dataStartIdx = 2;
+      }
+
+      if (!acNo || acNo < 1 || acNo > 350) continue;
+
+      const remaining = cells.slice(dataStartIdx);
+      if (remaining.length < 2) continue;
+
+      let leading = remaining[0] ?? '';
+      let party = remaining[1] ?? '';
+      let status = '';
+      let totalVotes = 0;
+      let margin = 0;
+
+      for (let i = 2; i < remaining.length; i++) {
+        const cell = remaining[i] ?? '';
+        if (/won|leading|trailing|result/i.test(cell)) { status = cell; continue; }
+        const num = parseInt(cell.replace(/,/g, ''));
+        if (!isNaN(num)) {
+          if (totalVotes === 0) totalVotes = num;
+          else margin = num;
+        }
+      }
+
+      party = party.replace(/\s*\(.*?\)\s*$/, '').trim().toUpperCase();
+      const acNameFull = acName;
+      acName = acName.replace(/\s*\(.*?\)\s*$/, '').trim();
+
+      results.push({
+        acNo,
+        acName,
+        acNameFull,
+        leading: leading.trim(),
+        party,
+        status: status.toLowerCase().includes('won') ? 'won' : 'counting',
+        totalVotes,
+        margin,
+      });
+    }
+    return results;
   }
 
   /** Refresh the state panel if it's currently open (after live results update). */
